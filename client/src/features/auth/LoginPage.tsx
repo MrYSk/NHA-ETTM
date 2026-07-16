@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/hooks/useAuth';
 import { USE_MOCK_API } from '@/api/client';
+// API URL
+const API_URL = "http://58.27.166.45:3000/api/login";
 
 const schema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -19,7 +20,6 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [serverError, setServerError] = React.useState<string | null>(null);
@@ -31,16 +31,59 @@ export default function LoginPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: FormValues) => {
-    setServerError(null);
-    try {
-      await login(values.username, values.password);
-      const from = (location.state as { from?: string } | null)?.from || '/';
-      navigate(from, { replace: true });
-    } catch (err) {
-      const message = (err as { message?: string })?.message ?? 'Unable to sign in. Please try again.';
-      setServerError(message);
+  setServerError(null);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        username: values.username,
+        password: values.password,
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        data?.error ||
+        'Invalid username or password.'
+      );
     }
-  };
+
+    // Change these property names according to your API response
+    const token =
+      data?.token ||
+      data?.accessToken ||
+      data?.access_token;
+
+    if (token) {
+      localStorage.setItem('authToken', token);
+    }
+
+    // Optionally save the logged-in user
+    if (data?.user) {
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
+
+    const from =
+      (location.state as { from?: string } | null)?.from || '/';
+
+    navigate(from, { replace: true });
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : 'Unable to sign in. Please try again.';
+
+    setServerError(message);
+  }
+};
 
   return (
     <Card className="w-full max-w-sm border-0 shadow-none sm:border sm:shadow-card">
