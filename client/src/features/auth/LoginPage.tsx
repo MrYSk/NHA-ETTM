@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { USE_MOCK_API } from '@/api/client';
 // API URL
-const API_URL = "http://58.27.166.45:3000/api/login";
+const API_URL = import.meta.env.VITE_API_URL + '/login';
 
 const schema = z.object({
   username: z.string().min(1, 'Username is required'),
