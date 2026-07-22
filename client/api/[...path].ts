@@ -7,8 +7,9 @@
  * whether Vercel's "Root Directory" is the repository root (this file) or the
  * `client/` folder (the copy at client/api/[...path].ts).
  *
- * As a catch-all route (`[...path]`), Vercel sends every `/api/*` request here,
- * so no rewrite is needed to reach it. It:
+ * As a catch-all route (`[...path]`), Vercel sends every `/api/*` request here.
+ * The request path is read from `req.url` (not the catch-all query param, whose
+ * shape is unreliable across Vercel routing configurations). The handler:
  *   - allow-lists the documented HRIS routes,
  *   - forwards method, query, body and the caller's JWT to the upstream,
  *   - strips the PHP-notice HTML the CodeIgniter server sometimes prepends to
@@ -91,7 +92,7 @@ function parseUpstreamBody(data: unknown): unknown {
 // Minimal request/response typing so the file needs no extra @vercel/node dep.
 interface ProxyRequest {
   method?: string;
-  query: Record<string, string | string[] | undefined>;
+  url?: string;
   body?: unknown;
   headers: Record<string, string | string[] | undefined>;
 }
@@ -101,8 +102,15 @@ interface ProxyResponse {
 }
 
 export default async function handler(req: ProxyRequest, res: ProxyResponse): Promise<void> {
-  const rawPath = req.query.path;
-  const segments = Array.isArray(rawPath) ? rawPath : rawPath ? [rawPath] : [];
+  // Derive the upstream route from the URL directly. Vercel may present the
+  // function URL as "/api/login" or "/login" depending on routing, so strip an
+  // optional leading "/api/" and take the remaining segments.
+  const [pathname = '', queryString = ''] = (req.url ?? '').split('?');
+  const segments = pathname
+    .replace(/^\/+/, '')
+    .replace(/^api\/+/, '')
+    .split('/')
+    .filter(Boolean);
   const upstreamPath = segments.join('/');
   const firstSegment = segments[0] ?? '';
 
@@ -117,8 +125,7 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
     return;
   }
 
-  // Everything in req.query except the catch-all `path` is a real query param.
-  const { path: _omit, ...params } = req.query;
+  const params = Object.fromEntries(new URLSearchParams(queryString));
   const authorization = req.headers.authorization;
   const contentType = req.headers['content-type'];
 
