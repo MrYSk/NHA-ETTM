@@ -4,6 +4,7 @@ import { AppLayout } from '@/layouts/AppLayout';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { ProtectedRoute } from '@/routes/ProtectedRoute';
 import { RequireRole } from '@/routes/RequireRole';
+import { RouteErrorPage } from '@/components/common/RouteErrorPage';
 
 const LoginPage = React.lazy(() => import('@/features/auth/LoginPage'));
 const DashboardPage = React.lazy(() => import('@/features/dashboard/DashboardPage'));
@@ -21,6 +22,7 @@ const NotFoundPage = React.lazy(() => import('@/features/not-found/NotFoundPage'
 export const router = createBrowserRouter([
   {
     element: <AuthLayout />,
+    errorElement: <RouteErrorPage />,
     children: [{ path: '/login', element: <LoginPage /> }],
   },
   {
@@ -29,6 +31,7 @@ export const router = createBrowserRouter([
         <AppLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorPage />,
     children: [
       { path: '/', element: <DashboardPage /> },
       { path: '/employees', element: <EmployeesPage /> },
