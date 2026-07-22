@@ -95,10 +95,77 @@ interface ProxyRequest {
   url?: string;
   body?: unknown;
   headers: Record<string, string | string[] | undefined>;
+  on?: (event: string, listener: (chunk?: unknown) => void) => void;
+  readableEnded?: boolean;
 }
 interface ProxyResponse {
   status(code: number): ProxyResponse;
   json(body: unknown): void;
+}
+
+// Read the raw request stream (used only when the platform did not hand us a
+// usable parsed body). Resolves to '' if the stream is already consumed.
+function readRawStream(req: ProxyRequest): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof req.on !== 'function' || req.readableEnded) {
+      resolve('');
+      return;
+    }
+    let raw = '';
+    let settled = false;
+    const finish = () => {
+      if (!settled) {
+        settled = true;
+        resolve(raw);
+      }
+    };
+    const timer = setTimeout(finish, 3000);
+    req.on('data', (chunk) => {
+      raw += chunk;
+    });
+    req.on('end', () => {
+      clearTimeout(timer);
+      finish();
+    });
+    req.on('error', () => {
+      clearTimeout(timer);
+      finish();
+    });
+  });
+}
+
+// Resolve the request body into something axios can forward, regardless of
+// whether the serverless platform parsed it into an object, left it as a string
+// or Buffer, or did not parse it at all (in which case the raw stream is read).
+async function resolveBody(req: ProxyRequest): Promise<unknown> {
+  const body = req.body;
+  if (typeof body === 'string') {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return body;
+    }
+  }
+  if (body instanceof Uint8Array || Buffer.isBuffer(body)) {
+    const text = Buffer.from(body as Uint8Array).toString('utf8');
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+  if (body && typeof body === 'object' && Object.keys(body).length > 0) {
+    return body;
+  }
+  const raw = await readRawStream(req);
+  if (raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return body ?? undefined;
 }
 
 export default async function handler(req: ProxyRequest, res: ProxyResponse): Promise<void> {
@@ -128,14 +195,16 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
   const params = Object.fromEntries(new URLSearchParams(queryString));
   const authorization = req.headers.authorization;
   const contentType = req.headers['content-type'];
+  const method = (req.method ?? 'GET').toUpperCase();
+  const data = method === 'GET' || method === 'HEAD' ? undefined : await resolveBody(req);
 
   try {
     const upstream = await axios.request({
       baseURL: HRIS_API_BASE_URL,
       url: upstreamPath,
-      method: (req.method ?? 'GET') as string,
+      method,
       params,
-      data: req.body,
+      data,
       timeout: HRIS_API_TIMEOUT_MS,
       headers: {
         'Content-Type': (Array.isArray(contentType) ? contentType[0] : contentType) ?? 'application/json',
