@@ -14,6 +14,11 @@ export interface User {
   siteId?: ID;
   siteName?: string;
   avatarUrl?: string;
+  // From the real login response: ids of employees/sites this user manages
+  // (required by e.g. the monthly_summary endpoint) and module permissions.
+  employeeIds?: string[];
+  siteIds?: string[];
+  permissions?: Permission & { read?: boolean };
 }
 
 export interface Employee {
@@ -129,14 +134,20 @@ export interface Report {
   dateRange?: string;
 }
 
+// One row per employee per schedule period, as returned by `monthly_summary`.
 export interface MonthlySummary {
-  month?: string;
-  totalEmployees?: number;
-  present?: number;
-  absent?: number;
-  onLeave?: number;
-  late?: number;
-  attendanceRate?: number;
+  id: ID;
+  employeeName?: string;
+  siteName?: string;
+  designation?: string;
+  scheduleStart?: string;
+  scheduleEnd?: string;
+  shiftType?: string;
+  totalHours?: string;
+  hqHours?: string;
+  siteHours?: string;
+  totalTime?: string;
+  acceptableTime?: string;
 }
 
 export type ApiError = {

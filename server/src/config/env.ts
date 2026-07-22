@@ -19,10 +19,6 @@ export const env = {
   hrisApiBaseUrl: requireEnv('HRIS_API_BASE_URL', 'https://ettm.nha.gov.pk/hris_ci/'),
   hrisApiTimeoutMs: Number(process.env.HRIS_API_TIMEOUT_MS ?? 15000),
 
-  // Optional static API key/token for the upstream HRIS API, if/when the
-  // backend team confirms one is required. Never logged, never echoed back.
-  hrisApiKey: process.env.HRIS_API_KEY,
-
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
 
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000),

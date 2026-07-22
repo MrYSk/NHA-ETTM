@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleAlert, CircleDashed } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { USE_MOCK_API } from '@/api/client';
 import { checkHealth } from '@/api/health.service';
 import { queryKeys } from '@/lib/queryClient';
 
@@ -23,7 +22,7 @@ export function ApiStatusBadge() {
         !isLoading && ok && 'border-success/30 bg-success/10 text-success',
         !isLoading && !ok && 'border-warning/30 bg-warning/10 text-warning',
       )}
-      title={USE_MOCK_API ? 'Mock API mode' : 'Live API mode'}
+      title="Live API mode"
     >
       {isLoading ? (
         <CircleDashed className="h-3 w-3 animate-spin" />
@@ -32,7 +31,7 @@ export function ApiStatusBadge() {
       ) : (
         <CircleAlert className="h-3 w-3" />
       )}
-      {USE_MOCK_API ? 'Mock API' : isError || !ok ? 'API unreachable' : 'API online'}
+      {isError || !ok ? 'API unreachable' : 'API online'}
     </div>
   );
 }

@@ -20,9 +20,14 @@ export function AuthLayout() {
           </p>
         </div>
 
-        <p className="text-xs text-primary-foreground/50">
-          &copy; {new Date().getFullYear()} National Highway Authority of Pakistan. Internal use only.
-        </p>
+        <div className="space-y-1">
+          <p className="text-xs text-primary-foreground/50">
+            &copy; {new Date().getFullYear()} National Highway Authority of Pakistan. Internal use only.
+          </p>
+          <p className="text-xs text-primary-foreground/50">
+            Made by <span className="font-medium text-primary-foreground/70">YAHYA SAJJAD</span>
+          </p>
+        </div>
 
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/5" />
         <div className="pointer-events-none absolute -bottom-32 -left-16 h-72 w-72 rounded-full bg-white/5" />

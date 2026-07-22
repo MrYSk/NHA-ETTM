@@ -17,8 +17,14 @@ export function normalizeUpstreamError(error: unknown): NormalizedError {
       return { status: 502, message: 'Unable to reach the upstream HRIS API.' };
     }
     const status = error.response.status;
-    const data = error.response.data as { message?: string } | undefined;
-    return { status, message: data?.message ?? 'The upstream HRIS API returned an error.' };
+    // The upstream CodeIgniter API reports failures as `{status:false,error:"..."}`,
+    // while some routes use `{message:"..."}`. Surface whichever is present so the
+    // real reason (e.g. "Invalid API key") reaches the browser instead of being masked.
+    const data = error.response.data as { message?: string; error?: string } | undefined;
+    return {
+      status,
+      message: data?.message ?? data?.error ?? 'The upstream HRIS API returned an error.',
+    };
   }
   return { status: 500, message: 'An unexpected error occurred.' };
 }

@@ -2,7 +2,10 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import type { Site } from '@/types';
 
 export default function SiteStaffingChart({ data }: { data: Site[] }) {
-  const chartData = data.slice(0, 6).map((s) => ({ name: s.code ?? s.name, count: s.employeeCount ?? 0 }));
+  const chartData = [...data]
+    .sort((a, b) => (b.employeeCount ?? 0) - (a.employeeCount ?? 0))
+    .slice(0, 6)
+    .map((s) => ({ name: s.code ?? s.name, count: s.employeeCount ?? 0 }));
 
   return (
     <ResponsiveContainer width="100%" height={260}>

@@ -1,7 +1,11 @@
-import { apiClient, USE_MOCK_API } from './client';
-import { delay } from './mock/handlers';
-import type { User } from '@/types';
+import { apiClient } from './client';
+import type { ApiError, User } from '@/types';
 
+/*
+ * The login form field is named "username" so the LoginPage and useAuth hook
+ * work unchanged. The real HRIS API also calls this field `username`, even
+ * though users type their office email address into it.
+ */
 export interface LoginPayload {
   username: string;
   password: string;
@@ -12,40 +16,141 @@ export interface LoginResult {
   token: string;
 }
 
-const DEMO_USER: User = {
-  id: 1,
-  name: 'System Administrator',
-  username: 'admin',
-  email: 'admin@nha.gov.pk',
-  role: 'HR Administrator',
-  designation: 'HR Administrator',
-  siteName: 'Head Office — Islamabad',
-};
+/*
+ * Real response of POST /login (verified against the live API):
+ * user_id, fname, lname, full_name, designation, site, role (ids as strings),
+ * employees[], sites[], *_permission flags, access_token, success: "true".
+ */
+interface BackendLoginResponse {
+  user_id?: string;
+  fname?: string;
+  lname?: string;
+  full_name?: string;
+  designation?: string;
+  site?: string;
+  role?: string;
+  employees?: string[];
+  sites?: string[];
+  read_permission?: string;
+  write_permission?: string;
+  edit_permission?: string;
+  approval_permission?: string;
+  delete_permission?: string;
+  access_token?: string;
+  success?: string;
+  message?: string;
+}
+
+interface JwtPayload {
+  user_id?: string;
+  site?: string;
+  full_name?: string;
+  email?: string;
+  contact?: string;
+  designation?: string;
+  status?: string;
+}
+
+/*
+ * Read the non-secret claims stored inside the JWT the API returned. This
+ * does not verify the token — verification is the backend's responsibility.
+ */
+function decodeJwtPayload(token: string): JwtPayload | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const normalizedPayload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      '=',
+    );
+
+    const decodedPayload = window.atob(paddedPayload);
+    const jsonPayload = decodeURIComponent(
+      Array.from(decodedPayload)
+        .map((character) => `%${character.charCodeAt(0).toString(16).padStart(2, '0')}`)
+        .join(''),
+    );
+
+    return JSON.parse(jsonPayload) as JwtPayload;
+  } catch (error) {
+    console.warn('Unable to decode login token:', error);
+    return null;
+  }
+}
 
 export async function login(payload: LoginPayload): Promise<LoginResult> {
-  if (USE_MOCK_API) {
-    if (payload.username === 'admin' && payload.password === 'admin123') {
-      return delay({ user: DEMO_USER, token: 'mock-session-token' }, 500);
+  const username = payload.username.trim();
+
+  let data: BackendLoginResponse;
+  try {
+    const response = await apiClient.post<BackendLoginResponse>('/login', {
+      username,
+      password: payload.password,
+    });
+    data = response.data;
+  } catch (error) {
+    /*
+     * Quirk of the real API (verified): wrong username/password makes the
+     * login route answer 403 "Invalid API key". Translate that one case to
+     * what it actually means; every other error passes through untouched.
+     */
+    const apiError = error as ApiError;
+    if (apiError.status === 403) {
+      throw { ...apiError, message: 'Invalid username or password.' };
     }
-    // Simulate the shape of a real 401 without hitting the network.
-    return Promise.reject({ status: 401, message: 'Invalid username or password.' });
+    throw error;
   }
 
-  // TODO: Confirm HTTP method, headers, and exact request/response payload
-  // for `login` with the backend team. Assumed POST with { username, password }.
-  const { data } = await apiClient.post<LoginResult>('/login', payload);
-  return data;
-}
+  const token = data?.access_token;
 
-export async function fetchCurrentUser(): Promise<User> {
-  if (USE_MOCK_API) {
-    return delay(DEMO_USER, 150);
+  if (!token || data?.success !== 'true') {
+    throw {
+      message: data?.message || 'The login server did not return an authentication token.',
+    };
   }
-  const { data } = await apiClient.get<User>('/user_list/me');
-  return data;
+
+  const jwt = decodeJwtPayload(token);
+
+  const user: User = {
+    id: data.user_id ?? jwt?.user_id ?? 0,
+    name: data.full_name ?? jwt?.full_name ?? username,
+    username,
+    email: jwt?.email ?? username,
+    designation: data.designation ?? jwt?.designation,
+    role: data.role,
+    siteId: data.site ?? jwt?.site,
+    employeeIds: data.employees,
+    siteIds: data.sites,
+    permissions: {
+      read: data.read_permission === '1',
+      write: data.write_permission === '1',
+      edit: data.edit_permission === '1',
+      approve: data.approval_permission === '1',
+      delete: data.delete_permission === '1',
+    },
+  };
+
+  return { token, user };
 }
 
-export function logout() {
+/*
+ * The stored session user, for services that need login-scoped context
+ * (e.g. monthly_summary requires the caller's employees array).
+ */
+export function getSessionUser(): User | null {
+  try {
+    const raw = sessionStorage.getItem('nha_session_user');
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function logout(): void {
   sessionStorage.removeItem('nha_session_token');
   sessionStorage.removeItem('nha_session_user');
 }

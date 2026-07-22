@@ -1,13 +1,26 @@
-import { apiClient, USE_MOCK_API } from './client';
-import { delay, generateId, mockDb } from './mock/handlers';
+import { apiClient } from './client';
 import type { Shift } from '@/types';
 
+interface ShiftRow {
+  id: string;
+  shift_name: string;
+  shift_type: string;
+  shift_type_name: string;
+  shift_start: string;
+  shift_end: string;
+  shift_duration: string;
+  last_updated: string | null;
+}
+
 export async function listShifts(): Promise<Shift[]> {
-  if (USE_MOCK_API) {
-    return delay(mockDb.shifts);
-  }
-  const { data } = await apiClient.get<Shift[]>('/shift_list');
-  return data;
+  // GET /shift_list → { shift_info: [...] }
+  const { data } = await apiClient.get<{ shift_info: ShiftRow[] }>('/shift_list');
+  return (data.shift_info ?? []).map((s) => ({
+    id: s.id,
+    name: s.shift_name,
+    startTime: s.shift_start,
+    endTime: s.shift_end,
+  }));
 }
 
 export interface AddShiftPayload {
@@ -16,12 +29,9 @@ export interface AddShiftPayload {
   endTime: string;
 }
 
+// TODO: the exact `add_shift` payload field names are not yet confirmed with
+// the backend controller — verify before relying on this in production.
 export async function addShift(payload: AddShiftPayload): Promise<Shift> {
-  if (USE_MOCK_API) {
-    const shift: Shift = { id: generateId(), ...payload, status: 'active' };
-    mockDb.shifts.unshift(shift);
-    return delay(shift, 350);
-  }
   const { data } = await apiClient.post<Shift>('/add_shift', payload);
   return data;
 }

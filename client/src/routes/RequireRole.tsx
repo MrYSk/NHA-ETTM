@@ -1,11 +1,13 @@
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
-const AUTHORIZED_ROLES = ['HR Administrator', 'Site Manager'];
-
+/*
+ * Gate on the real permission flags from the login response rather than a
+ * role-name list: managing roles requires at least edit or write rights.
+ */
 export function RequireRole({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const authorized = !!user?.role && AUTHORIZED_ROLES.includes(user.role);
+  const authorized = !!user?.permissions?.edit || !!user?.permissions?.write;
 
   if (!authorized) {
     return (
@@ -16,8 +18,8 @@ export function RequireRole({ children }: { children: React.ReactNode }) {
         <div>
           <p className="text-sm font-medium">Restricted page</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Roles &amp; Permissions is limited to HR Administrators and Site Managers. Contact your
-            administrator if you need access.
+            Roles &amp; Permissions requires write or edit permission. Contact your administrator if
+            you need access.
           </p>
         </div>
       </div>

@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { checkHealth } from '@/api/health.service';
 import { testSsl } from '@/api/reports.service';
-import { USE_MOCK_API, API_BASE_URL } from '@/api/client';
+import { API_BASE_URL } from '@/api/client';
 import { queryKeys } from '@/lib/queryClient';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
@@ -37,7 +37,7 @@ export default function SettingsPage() {
               label="Proxy health"
               status={healthQuery.isLoading ? 'loading' : healthQuery.data?.status === 'ok' ? 'ok' : 'error'}
             />
-            <StatusRow label="API mode" value={USE_MOCK_API ? 'Mock API' : 'Live API'} />
+            <StatusRow label="API mode" value="Live API" />
             <StatusRow label="API base URL" value={API_BASE_URL} />
             <Separator />
             <div className="flex items-center justify-between">

@@ -12,7 +12,7 @@ import { listSites } from '@/api/sites.service';
 import { getMonthlySummary } from '@/api/attendance.service';
 import { listLeaves } from '@/api/leaves.service';
 import { queryKeys } from '@/lib/queryClient';
-import { formatDate } from '@/utils/format';
+import { formatDate, parseDurationHours } from '@/utils/format';
 
 const AttendanceTrendChart = React.lazy(() => import('./components/AttendanceTrendChart'));
 const SiteStaffingChart = React.lazy(() => import('./components/SiteStaffingChart'));
@@ -29,7 +29,10 @@ export default function DashboardPage() {
     queryFn: () => listLeaves({ status: 'pending', page: 1, pageSize: 5 }),
   });
 
-  const latestSummary = summaryQuery.data?.[summaryQuery.data.length - 1];
+  const summaryRows = summaryQuery.data ?? [];
+  const totalTeamHours = Math.round(
+    summaryRows.reduce((sum, row) => sum + parseDurationHours(row.totalTime), 0),
+  );
 
   return (
     <div className="space-y-6">
@@ -46,10 +49,10 @@ export default function DashboardPage() {
           trend={sitesQuery.data ? `Across ${sitesQuery.data.length} sites` : undefined}
         />
         <StatCard
-          label="Attendance rate (this month)"
-          value={latestSummary ? `${latestSummary.attendanceRate}%` : '—'}
+          label="Team hours logged"
+          value={summaryQuery.isLoading ? '—' : `${totalTeamHours.toLocaleString()} h`}
           icon={CalendarCheck}
-          trend={latestSummary ? `${latestSummary.present} present today` : undefined}
+          trend={summaryRows.length ? `${summaryRows.length} summary periods` : undefined}
           trendTone="success"
         />
         <StatCard
@@ -60,18 +63,18 @@ export default function DashboardPage() {
           trendTone="warning"
         />
         <StatCard
-          label="Active sites"
-          value={sitesQuery.isLoading ? '—' : sitesQuery.data?.filter((s) => s.status === 'active').length ?? 0}
+          label="Sites"
+          value={sitesQuery.isLoading ? '—' : sitesQuery.data?.length ?? 0}
           icon={Building2}
-          trend={sitesQuery.data ? `${sitesQuery.data.length} total` : undefined}
+          trend="ETTM network"
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Attendance trend</CardTitle>
-            <CardDescription>Monthly attendance rate across all ETTM sites.</CardDescription>
+            <CardTitle>Team hours</CardTitle>
+            <CardDescription>Total logged hours per employee, from the monthly summary.</CardDescription>
           </CardHeader>
           <CardContent>
             <WidgetErrorBoundary label="attendance-trend-chart">

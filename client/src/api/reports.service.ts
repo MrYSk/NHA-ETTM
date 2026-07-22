@@ -1,5 +1,5 @@
-import { apiClient, USE_MOCK_API } from './client';
-import { delay, mockDb, searchFilter } from './mock/handlers';
+import { apiClient, createListCache, matchesSearch } from './client';
+import type { AttendanceRow } from './attendance.service';
 import type { Report } from '@/types';
 
 export interface ReportFilters {
@@ -9,20 +9,39 @@ export interface ReportFilters {
   dateTo?: string;
 }
 
+// Newest entries first; cap how many report cards render at once.
+const MAX_REPORT_CARDS = 60;
+
+/*
+ * POST /report_list returns the raw attendance reporting rows (same shape as
+ * attendance_list, verified against the live API). Each row is presented as
+ * one report entry in the existing card UI.
+ */
+const reportsCache = createListCache(async () => {
+  const { data } = await apiClient.post<{ attendance_rows: AttendanceRow[] }>('/report_list', {});
+  return (data.attendance_rows ?? []).map(
+    (row, index): Report => ({
+      // Upstream report rows can repeat ids — suffix the index so React
+      // list keys stay unique.
+      id: `${row.id}-${index}`,
+      title: `${row.fullname} — ${row.attendance_date}`,
+      type: row.shift_name || 'Attendance',
+      siteName: row.site_name,
+      dateRange: `${row.schedule_start_date} – ${row.schedule_end_date}`,
+      generatedOn: row.attendance_date,
+    }),
+  );
+});
+
 export async function listReports(filters: ReportFilters): Promise<Report[]> {
-  if (USE_MOCK_API) {
-    let items = [...mockDb.reports];
-    items = searchFilter(items, filters.search, ['title', 'type']);
-    return delay(items);
-  }
-  const { data } = await apiClient.get<Report[]>('/report_list', { params: filters });
-  return data;
+  const all = await reportsCache.get();
+  return all
+    .filter((r) => matchesSearch([r.title, r.type, r.siteName], filters.search))
+    .slice(0, MAX_REPORT_CARDS);
 }
 
 export async function testSsl(): Promise<{ ok: boolean; message: string }> {
-  if (USE_MOCK_API) {
-    return delay({ ok: true, message: 'SSL handshake succeeded (mock).' }, 300);
-  }
-  const { data } = await apiClient.get('/ssl_test');
-  return data;
+  // GET /ssl_test → { status: true, message: "...", name: "..." }
+  const { data } = await apiClient.get<{ status: boolean; message: string }>('/ssl_test');
+  return { ok: data.status === true, message: data.message };
 }

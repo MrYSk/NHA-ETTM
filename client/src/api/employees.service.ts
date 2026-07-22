@@ -1,5 +1,4 @@
-import { apiClient, USE_MOCK_API } from './client';
-import { delay, generateId, mockDb, paginate, searchFilter } from './mock/handlers';
+import { apiClient, createListCache, matchesSearch, paginateList } from './client';
 import type { Employee, PaginatedResult } from '@/types';
 
 export interface EmployeeFilters {
@@ -7,29 +6,83 @@ export interface EmployeeFilters {
   pageSize?: number;
   search?: string;
   siteId?: string | number;
-  designation?: string;
+  designation?: string | number;
   roleId?: string | number;
 }
 
+/*
+ * Real row shape of `user_list` / `employees_list_for_filters`
+ * (verified against the live API).
+ */
+export interface EmployeeRow {
+  id: string;
+  fullname: string;
+  email: string;
+  bio_ref_id: string;
+  site: string;
+  site_name: string;
+  contact: string;
+  address: string;
+  employee_type: string;
+  type_of_employee: string;
+  consultant: string;
+  section: string;
+  section_name: string;
+  field: string;
+  field_name: string;
+  designation: string;
+  designation_name: string;
+  role: string;
+  role_name: string;
+  status: string;
+}
+
+export function mapEmployee(row: EmployeeRow): Employee {
+  return {
+    id: row.id,
+    name: row.fullname,
+    employeeCode: row.bio_ref_id,
+    designation: row.designation_name,
+    siteId: row.site,
+    siteName: row.site_name,
+    roleId: row.role,
+    roleName: row.role_name,
+    phone: row.contact,
+    email: row.email,
+    status: row.status === '1' ? 'active' : 'inactive',
+  };
+}
+
+/*
+ * POST /user_list returns every employee (the upstream ignores pagination),
+ * wrapped as { employees_rows, total_rows }. Send no filter objects: empty
+ * `{items: []}` arrays crash the upstream SQL (`IN ()`), so all filtering is
+ * done client-side instead.
+ */
+const employeesCache = createListCache(async () => {
+  const { data } = await apiClient.post<{ employees_rows: EmployeeRow[] }>('/user_list', {});
+  return (data.employees_rows ?? []).map(mapEmployee);
+});
+
 export async function listEmployees(filters: EmployeeFilters): Promise<PaginatedResult<Employee>> {
-  if (USE_MOCK_API) {
-    let items = [...mockDb.employees];
-    items = searchFilter(items, filters.search, ['name', 'employeeCode', 'email']);
-    if (filters.siteId) items = items.filter((e) => String(e.siteId) === String(filters.siteId));
-    if (filters.designation) items = items.filter((e) => e.designation === filters.designation);
-    if (filters.roleId) items = items.filter((e) => String(e.roleId) === String(filters.roleId));
-    return delay(paginate(items, filters));
-  }
-  const { data } = await apiClient.get<PaginatedResult<Employee>>('/user_list', { params: filters });
-  return data;
+  const all = await employeesCache.get();
+  const filtered = all.filter(
+    (e) =>
+      matchesSearch([e.name, e.employeeCode, e.email], filters.search) &&
+      (!filters.siteId || String(e.siteId) === String(filters.siteId)) &&
+      (!filters.designation || e.designation === String(filters.designation)) &&
+      (!filters.roleId || String(e.roleId) === String(filters.roleId)),
+  );
+  return paginateList(filtered, filters.page, filters.pageSize);
+}
+
+export async function listAllEmployees(): Promise<Employee[]> {
+  return employeesCache.get();
 }
 
 export async function getEmployee(id: Employee['id']): Promise<Employee | undefined> {
-  if (USE_MOCK_API) {
-    return delay(mockDb.employees.find((e) => String(e.id) === String(id)));
-  }
-  const { data } = await apiClient.get<Employee>(`/employees_list_for_filters/${id}`);
-  return data;
+  const all = await employeesCache.get();
+  return all.find((e) => String(e.id) === String(id));
 }
 
 export interface AddEmployeePayload {
@@ -41,24 +94,10 @@ export interface AddEmployeePayload {
   email?: string;
 }
 
+// TODO: the exact `add_user` payload field names are not yet confirmed with
+// the backend controller — verify before relying on this in production.
 export async function addEmployee(payload: AddEmployeePayload): Promise<Employee> {
-  if (USE_MOCK_API) {
-    const site = mockDb.sites.find((s) => String(s.id) === String(payload.siteId));
-    const employee: Employee = {
-      id: generateId(),
-      name: payload.name,
-      employeeCode: payload.employeeCode,
-      designation: payload.designation,
-      siteId: payload.siteId,
-      siteName: site?.name,
-      phone: payload.phone,
-      email: payload.email,
-      status: 'active',
-      joiningDate: new Date().toISOString(),
-    };
-    mockDb.employees.unshift(employee);
-    return delay(employee, 400);
-  }
   const { data } = await apiClient.post<Employee>('/add_user', payload);
+  employeesCache.clear();
   return data;
 }

@@ -65,6 +65,25 @@ function firstSegment(path: string): string {
   return path.replace(/^\//, '').split('/')[0] ?? '';
 }
 
+/*
+ * The upstream CodeIgniter server replies with a text/html content type and
+ * sometimes prepends PHP notice markup before the JSON payload, so axios
+ * hands us a raw string. Recover the embedded JSON so the browser always
+ * receives a proper object; anything unparseable passes through untouched.
+ */
+function parseUpstreamBody(data: unknown): unknown {
+  if (typeof data !== 'string') return data;
+  const objStart = data.indexOf('{');
+  const arrStart = data.indexOf('[');
+  const start = [objStart, arrStart].filter((i) => i !== -1).sort((a, b) => a - b)[0];
+  if (start === undefined) return data;
+  try {
+    return JSON.parse(data.slice(start));
+  } catch {
+    return data;
+  }
+}
+
 function isAllowed(path: string): boolean {
   return ALLOWED_ROUTES.includes(firstSegment(path));
 }
@@ -96,13 +115,15 @@ proxyRouter.use(async (req: Request, res: Response, next: NextFunction) => {
       params: req.query,
       data: req.body,
       headers: {
-        // Forward only the minimal set of headers needed; never forward the
-        // browser's own cookies/auth straight through without review.
+        // Forward only the headers the upstream actually uses: the content
+        // type and the user's own JWT (`Authorization: Bearer <access_token>`
+        // from login), which every non-login route requires.
         'Content-Type': req.headers['content-type'] ?? 'application/json',
+        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
     });
 
-    res.status(upstreamResponse.status).json(upstreamResponse.data);
+    res.status(upstreamResponse.status).json(parseUpstreamBody(upstreamResponse.data));
   } catch (error) {
     next(error);
   }
