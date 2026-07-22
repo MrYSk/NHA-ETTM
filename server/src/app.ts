@@ -22,8 +22,29 @@ export function createApp() {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  // Body parsing that is safe on serverless platforms. Vercel (and similar)
+  // pre-parse the request body and CONSUME the underlying stream before this
+  // Express app runs. If express.json() then re-reads that drained stream it
+  // parses "" and overwrites req.body with {}, so the proxied login/POST bodies
+  // arrive empty upstream (the NHA API then reports invalid credentials).
+  //
+  // Fix: only run Express's parsers when the platform hasn't already provided a
+  // parsed body. Locally (no platform pre-parse) req.body is undefined, so the
+  // parsers run normally.
+  const jsonParser = express.json({ limit: '1mb' });
+  const urlencodedParser = express.urlencoded({ extended: true, limit: '1mb' });
+  app.use((req, res, next) => {
+    // If the platform already parsed the body (Vercel always sets req.body when
+    // it pre-parses — including to `{}` for an empty-object payload), keep it
+    // and do NOT re-read the already-consumed stream, which would replace the
+    // real body with `{}` (or hang). Locally req.body is undefined here, so the
+    // Express parsers run normally.
+    if (req.body !== undefined && req.body !== null) {
+      next();
+      return;
+    }
+    jsonParser(req, res, (err) => (err ? next(err) : urlencodedParser(req, res, next)));
+  });
   app.use(apiRateLimiter);
 
   app.use((req, _res, next) => {
