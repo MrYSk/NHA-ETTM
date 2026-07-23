@@ -187,6 +187,33 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
     return;
   }
 
+  // TEMP DIAGNOSTIC: reports how the platform delivers the request body so a
+  // body-forwarding problem can be pinpointed. Does not touch the upstream and
+  // never echoes the password value. Remove once login is confirmed working.
+  if (firstSegment === '__echo') {
+    const rawBody = req.body;
+    const resolved = await resolveBody(req);
+    const obj = (v: unknown): Record<string, unknown> | null =>
+      v && typeof v === 'object' && !Buffer.isBuffer(v) ? (v as Record<string, unknown>) : null;
+    const ro = obj(resolved);
+    res.status(200).json({
+      method: req.method ?? null,
+      url: req.url ?? null,
+      contentType: req.headers['content-type'] ?? null,
+      rawBodyType: rawBody === null ? 'null' : typeof rawBody,
+      rawBodyIsBuffer: Buffer.isBuffer(rawBody) || rawBody instanceof Uint8Array,
+      rawBodyKeys: obj(rawBody) ? Object.keys(obj(rawBody) as object) : null,
+      resolvedType: resolved === undefined ? 'undefined' : typeof resolved,
+      resolvedKeys: ro ? Object.keys(ro) : null,
+      hasUsername: ro ? typeof ro.username === 'string' && (ro.username as string).length > 0 : false,
+      hasPassword: ro ? typeof ro.password === 'string' && (ro.password as string).length > 0 : false,
+      readableEnded: req.readableEnded ?? null,
+      hasOn: typeof req.on,
+      baseUrl: HRIS_API_BASE_URL,
+    });
+    return;
+  }
+
   if (!ALLOWED_ROUTES.has(firstSegment)) {
     res.status(404).json({ message: `Unknown or unapproved HRIS route: /${upstreamPath}` });
     return;
