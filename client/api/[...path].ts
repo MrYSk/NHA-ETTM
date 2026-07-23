@@ -89,6 +89,18 @@ function parseUpstreamBody(data: unknown): unknown {
   }
 }
 
+// NHA's server sits behind Cloudflare, which can block requests that don't look
+// like a real browser (the default axios User-Agent is one such trigger).
+// Sending browser-like headers can get past Cloudflare's Browser Integrity
+// Check. If Cloudflare is blocking by IP/ASN instead, these have no effect.
+const BROWSER_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+};
+
 // Minimal request/response typing so the file needs no extra @vercel/node dep.
 interface ProxyRequest {
   method?: string;
@@ -207,6 +219,7 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
         url: 'ssl_test',
         method: 'GET',
         timeout: HRIS_API_TIMEOUT_MS,
+        headers: { ...BROWSER_HEADERS },
         validateStatus: () => true,
         transformResponse: [(d) => d],
       });
@@ -226,7 +239,7 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
         method: 'POST',
         data: resolved,
         timeout: HRIS_API_TIMEOUT_MS,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...BROWSER_HEADERS, 'Content-Type': 'application/json' },
         validateStatus: () => true,
         transformResponse: [(d) => d],
       });
@@ -272,6 +285,7 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
       data,
       timeout: HRIS_API_TIMEOUT_MS,
       headers: {
+        ...BROWSER_HEADERS,
         'Content-Type': (Array.isArray(contentType) ? contentType[0] : contentType) ?? 'application/json',
         ...(authorization
           ? { Authorization: Array.isArray(authorization) ? authorization[0] : authorization }
