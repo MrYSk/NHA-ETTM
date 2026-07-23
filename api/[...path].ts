@@ -187,29 +187,61 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
     return;
   }
 
-  // TEMP DIAGNOSTIC: reports how the platform delivers the request body so a
-  // body-forwarding problem can be pinpointed. Does not touch the upstream and
-  // never echoes the password value. Remove once login is confirmed working.
+  // TEMP DIAGNOSTIC: forwards to the upstream from the serverless function and
+  // reports exactly what the upstream returns, to distinguish a body problem
+  // from the upstream rejecting Vercel's servers. Remove once login works.
   if (firstSegment === '__echo') {
-    const rawBody = req.body;
     const resolved = await resolveBody(req);
     const obj = (v: unknown): Record<string, unknown> | null =>
       v && typeof v === 'object' && !Buffer.isBuffer(v) ? (v as Record<string, unknown>) : null;
     const ro = obj(resolved);
+    const preview = (d: unknown) =>
+      typeof d === 'string' ? d.slice(0, 220) : JSON.stringify(d).slice(0, 220);
+
+    // (a) ssl_test: a public upstream route needing no body/credentials.
+    let sslStatus: number | string = 'ERR';
+    let sslBody = '';
+    try {
+      const r = await axios.request({
+        baseURL: HRIS_API_BASE_URL,
+        url: 'ssl_test',
+        method: 'GET',
+        timeout: HRIS_API_TIMEOUT_MS,
+        validateStatus: () => true,
+        transformResponse: [(d) => d],
+      });
+      sslStatus = r.status;
+      sslBody = preview(r.data);
+    } catch (e) {
+      sslBody = (e as Error).message;
+    }
+
+    // (b) login: forward the resolved body exactly like the real login path.
+    let loginStatus: number | string = 'ERR';
+    let loginBody = '';
+    try {
+      const r = await axios.request({
+        baseURL: HRIS_API_BASE_URL,
+        url: 'login',
+        method: 'POST',
+        data: resolved,
+        timeout: HRIS_API_TIMEOUT_MS,
+        headers: { 'Content-Type': 'application/json' },
+        validateStatus: () => true,
+        transformResponse: [(d) => d],
+      });
+      loginStatus = r.status;
+      loginBody = preview(r.data);
+    } catch (e) {
+      loginBody = (e as Error).message;
+    }
+
     res.status(200).json({
-      method: req.method ?? null,
-      url: req.url ?? null,
-      contentType: req.headers['content-type'] ?? null,
-      rawBodyType: rawBody === null ? 'null' : typeof rawBody,
-      rawBodyIsBuffer: Buffer.isBuffer(rawBody) || rawBody instanceof Uint8Array,
-      rawBodyKeys: obj(rawBody) ? Object.keys(obj(rawBody) as object) : null,
-      resolvedType: resolved === undefined ? 'undefined' : typeof resolved,
-      resolvedKeys: ro ? Object.keys(ro) : null,
       hasUsername: ro ? typeof ro.username === 'string' && (ro.username as string).length > 0 : false,
       hasPassword: ro ? typeof ro.password === 'string' && (ro.password as string).length > 0 : false,
-      readableEnded: req.readableEnded ?? null,
-      hasOn: typeof req.on,
       baseUrl: HRIS_API_BASE_URL,
+      sslTest: { status: sslStatus, body: sslBody },
+      login: { status: loginStatus, body: loginBody },
     });
     return;
   }
@@ -219,7 +251,13 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
     return;
   }
 
-  const params = Object.fromEntries(new URLSearchParams(queryString));
+  // Forward real query params, but drop Vercel's internal catch-all param
+  // (it arrives as "...path"/"path") so it is never sent to the upstream.
+  const params: Record<string, string> = {};
+  for (const [key, value] of new URLSearchParams(queryString)) {
+    if (key === 'path' || key.startsWith('.')) continue;
+    params[key] = value;
+  }
   const authorization = req.headers.authorization;
   const contentType = req.headers['content-type'];
   const method = (req.method ?? 'GET').toUpperCase();
