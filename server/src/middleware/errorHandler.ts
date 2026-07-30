@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { isAxiosError } from 'axios';
 import { logger } from '../utils/logger';
+import { isEdgeBlock } from '../routes/proxy.routes';
 
 export interface NormalizedError {
   status: number;
@@ -17,6 +18,20 @@ export function normalizeUpstreamError(error: unknown): NormalizedError {
       return { status: 502, message: 'Unable to reach the upstream HRIS API.' };
     }
     const status = error.response.status;
+
+    /*
+     * A Cloudflare block arrives here as a 403 carrying an HTML page. Reporting
+     * it as 403 would make the UI say "invalid username or password", so it is
+     * reported as a gateway failure with an explicit explanation instead.
+     */
+    if (isEdgeBlock(status, error.response.data)) {
+      return {
+        status: 502,
+        message:
+          'The NHA HRIS API refused the request from this server (blocked at its Cloudflare firewall). This is a network restriction, not a wrong username or password — the API only accepts requests from approved networks.',
+      };
+    }
+
     // The upstream CodeIgniter API reports failures as `{status:false,error:"..."}`,
     // while some routes use `{message:"..."}`. Surface whichever is present so the
     // real reason (e.g. "Invalid API key") reaches the browser instead of being masked.

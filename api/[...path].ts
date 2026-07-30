@@ -89,6 +89,25 @@ function parseUpstreamBody(data: unknown): unknown {
   }
 }
 
+/*
+ * The NHA API sits behind Cloudflare, which rejects requests from hosting
+ * providers' IP ranges with an HTML block page — served as a 403, exactly the
+ * status the API itself uses for bad credentials. Without telling the two
+ * apart, a network block shows up in the UI as "invalid username or password",
+ * which sends people hunting for a password problem that does not exist.
+ */
+function isEdgeBlock(status: number, body: unknown): boolean {
+  if (typeof body !== 'string') return false;
+  const text = body.slice(0, 4000).toLowerCase();
+  const looksLikeHtml = text.includes('<!doctype html') || text.includes('<html');
+  const cloudflareMarkers =
+    text.includes('cloudflare') ||
+    text.includes('cf-ray') ||
+    text.includes('attention required') ||
+    text.includes('sorry, you have been blocked');
+  return looksLikeHtml && (cloudflareMarkers || status === 403);
+}
+
 // NHA's server sits behind Cloudflare, which can block requests that don't look
 // like a real browser (the default axios User-Agent is one such trigger).
 // Sending browser-like headers can get past Cloudflare's Browser Integrity
@@ -296,6 +315,17 @@ export default async function handler(req: ProxyRequest, res: ProxyResponse): Pr
       // …and keep the raw body so we can strip HTML noise ourselves.
       transformResponse: [(d) => d],
     });
+
+    if (isEdgeBlock(upstream.status, upstream.data)) {
+      // 502: the failure is between this server and the upstream, not the
+      // caller's credentials.
+      res.status(502).json({
+        message:
+          'The NHA HRIS API refused the request from this server (blocked at its Cloudflare firewall). This is a network restriction, not a wrong username or password — the API only accepts requests from approved networks.',
+        code: 'UPSTREAM_BLOCKED',
+      });
+      return;
+    }
 
     res.status(upstream.status).json(parseUpstreamBody(upstream.data));
   } catch (error) {

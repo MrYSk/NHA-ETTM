@@ -66,6 +66,24 @@ function firstSegment(path: string): string {
 }
 
 /*
+ * Cloudflare (in front of the NHA API) rejects requests from hosting-provider
+ * IPs with an HTML block page served as 403 — the same status the API uses for
+ * bad credentials. Telling them apart stops a network block from being shown
+ * to users as "invalid username or password".
+ */
+export function isEdgeBlock(status: number, body: unknown): boolean {
+  if (typeof body !== 'string') return false;
+  const text = body.slice(0, 4000).toLowerCase();
+  const looksLikeHtml = text.includes('<!doctype html') || text.includes('<html');
+  const cloudflareMarkers =
+    text.includes('cloudflare') ||
+    text.includes('cf-ray') ||
+    text.includes('attention required') ||
+    text.includes('sorry, you have been blocked');
+  return looksLikeHtml && (cloudflareMarkers || status === 403);
+}
+
+/*
  * The upstream CodeIgniter server replies with a text/html content type and
  * sometimes prepends PHP notice markup before the JSON payload, so axios
  * hands us a raw string. Recover the embedded JSON so the browser always
@@ -122,6 +140,15 @@ proxyRouter.use(async (req: Request, res: Response, next: NextFunction) => {
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
     });
+
+    if (isEdgeBlock(upstreamResponse.status, upstreamResponse.data)) {
+      res.status(502).json({
+        message:
+          'The NHA HRIS API refused the request from this server (blocked at its Cloudflare firewall). This is a network restriction, not a wrong username or password — the API only accepts requests from approved networks.',
+        code: 'UPSTREAM_BLOCKED',
+      });
+      return;
+    }
 
     res.status(upstreamResponse.status).json(parseUpstreamBody(upstreamResponse.data));
   } catch (error) {
