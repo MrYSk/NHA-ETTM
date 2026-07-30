@@ -23,6 +23,7 @@ import { listEmployees } from '@/api/employees.service';
 import { listSites, listDesignations } from '@/api/sites.service';
 import { useDebounce } from '@/hooks/useDebounce';
 import { queryKeys } from '@/lib/queryClient';
+import { usePermissions } from '@/hooks/usePermissions';
 import { initials } from '@/utils/format';
 import { AddEmployeeDialog } from './components/AddEmployeeDialog';
 import { EmployeeDetailDrawer } from './components/EmployeeDetailDrawer';
@@ -39,6 +40,7 @@ export default function EmployeesPage() {
   const [selectedId, setSelectedId] = React.useState<Employee['id'] | null>(null);
 
   const debouncedSearch = useDebounce(search);
+  const { isScoped } = usePermissions();
 
   React.useEffect(() => setPage(1), [debouncedSearch, siteId, designation]);
 
@@ -66,7 +68,11 @@ export default function EmployeesPage() {
     <div className="space-y-5">
       <PageHeader
         title="Employees"
-        description="Search and manage employee records across every ETTM site."
+        description={
+          isScoped
+            ? 'The employees you are responsible for.'
+            : 'Search and manage employee records across every ETTM site.'
+        }
         actions={<AddEmployeeDialog />}
       />
 

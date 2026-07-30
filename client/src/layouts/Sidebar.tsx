@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
-import { ChevronsLeft, ChevronsRight, LogOut, Route } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, LogOut, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { NAV_ITEMS } from './nav-config';
+import { Logo } from '@/components/common/Logo';
+import { visibleNavItems } from './nav-config';
 import { useAuth } from '@/hooks/useAuth';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -11,6 +12,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const { user } = useAuth();
+  const navItems = visibleNavItems(user?.modules);
   const { logout } = useAuth();
 
   return (
@@ -21,9 +24,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       )}
     >
       <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
-          <Route className="h-4 w-4" />
-        </div>
+        <Logo className="h-9 w-9 shrink-0" />
         {!collapsed && (
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-semibold">NHA ETTM</p>
@@ -33,7 +34,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3 scrollbar-thin">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <SidebarLink key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} end={item.to === '/'} />
         ))}
       </nav>
@@ -72,7 +73,7 @@ function SidebarLink({
   end,
 }: {
   to: string;
-  icon: typeof Route;
+  icon: LucideIcon;
   label: string;
   collapsed: boolean;
   end?: boolean;

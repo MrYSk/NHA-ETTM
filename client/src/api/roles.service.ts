@@ -14,8 +14,13 @@ interface RoleRow {
   edit_permission: string;
   approval_permission: string;
   delete_permission: string;
+  /*
+   * Pivot rows. NOTE: in each of these the `id`/`name` pair is the ROLE's own
+   * id and name — the linked record is in the prefixed fields (`emp_id`,
+   * `module_id`, `site_id`). `emp_id` is a biometric id.
+   */
   modules?: { id: string; name: string; module_id: string; module_name: string }[];
-  employees?: { id: string; name?: string; employee_id?: string; employee_name?: string }[];
+  employees?: { id: string; name?: string; emp_id?: string; employee_name?: string }[];
   sites?: { id: string; name?: string; site_id?: string; site_name?: string }[];
 }
 
@@ -31,10 +36,10 @@ function mapRole(row: RoleRow): Role {
     },
     modules: (row.modules ?? []).map((m) => ({ id: m.module_id, name: m.module_name })),
     employees: (row.employees ?? []).map((e) => ({
-      id: e.employee_id ?? e.id,
-      name: e.employee_name ?? e.name,
+      id: e.emp_id ?? '',
+      name: e.employee_name,
     })),
-    sites: (row.sites ?? []).map((s) => ({ id: s.site_id ?? s.id, name: s.site_name ?? s.name })),
+    sites: (row.sites ?? []).map((s) => ({ id: s.site_id ?? '', name: s.site_name })),
   };
 }
 
@@ -52,17 +57,36 @@ export async function listRolesForDropdown(): Promise<Pick<Role, 'id' | 'name'>[
 
 export interface AddRolePayload {
   name: string;
-  description?: string;
+  /** Biometric ids of the employees the role applies to. */
+  employeeIds: string[];
+  /** Module ids the role grants access to. */
+  moduleIds: string[];
+  /** Site ids the role covers. */
+  siteIds: string[];
 }
 
-// TODO: the exact payload field names of the mutation endpoints below
-// (`add_role`, permission toggles, pivot deletes, `update_employee_role`)
-// are not yet confirmed with the backend controllers — verify before
-// relying on them in production.
-export async function addRole(payload: AddRolePayload): Promise<Role> {
-  const { data } = await apiClient.post<Role>('/add_role', payload);
+export interface AddRoleResult {
+  msg?: string;
+  status?: string;
+}
+
+/*
+ * Field names match the Api/Forms/AddRole controller, which reads exactly
+ * `role_name`, `employees`, `modules` and `sites` (it stores no description).
+ * Employees are identified by biometric id, matching the role pivot's emp_id.
+ */
+export async function addRole(payload: AddRolePayload): Promise<AddRoleResult> {
+  const { data } = await apiClient.post<AddRoleResult>('/add_role', {
+    role_name: payload.name,
+    employees: payload.employeeIds,
+    modules: payload.moduleIds,
+    sites: payload.siteIds,
+  });
   return data;
 }
+
+// TODO: the payload field names of the permission toggles, pivot deletes and
+// `update_employee_role` are still unconfirmed with their controllers.
 
 export async function togglePermission(
   roleId: Role['id'],

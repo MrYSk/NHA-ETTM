@@ -3,7 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '@/layouts/AppLayout';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { ProtectedRoute } from '@/routes/ProtectedRoute';
-import { RequireRole } from '@/routes/RequireRole';
+import { RequireModule } from '@/routes/RequireModule';
 import { RouteErrorPage } from '@/components/common/RouteErrorPage';
 
 const LoginPage = React.lazy(() => import('@/features/auth/LoginPage'));
@@ -15,7 +15,8 @@ const SchedulesPage = React.lazy(() => import('@/features/schedules/SchedulesPag
 const ShiftsPage = React.lazy(() => import('@/features/shifts/ShiftsPage'));
 const SitesPage = React.lazy(() => import('@/features/sites/SitesPage'));
 const RolesPage = React.lazy(() => import('@/features/roles/RolesPage'));
-const ReportsPage = React.lazy(() => import('@/features/reports/ReportsPage'));
+const SummaryPage = React.lazy(() => import('@/features/summary/SummaryPage'));
+const ReportingPage = React.lazy(() => import('@/features/reporting/ReportingPage'));
 const SettingsPage = React.lazy(() => import('@/features/settings/SettingsPage'));
 const NotFoundPage = React.lazy(() => import('@/features/not-found/NotFoundPage'));
 
@@ -43,12 +44,28 @@ export const router = createBrowserRouter([
       {
         path: '/roles',
         element: (
-          <RequireRole>
+          <RequireModule module="roles" label="Roles & Permissions">
             <RolesPage />
-          </RequireRole>
+          </RequireModule>
         ),
       },
-      { path: '/reports', element: <ReportsPage /> },
+      {
+        path: '/summary',
+        element: (
+          <RequireModule module="summary" label="Summary">
+            <SummaryPage />
+          </RequireModule>
+        ),
+      },
+      {
+        path: '/reporting',
+        element: (
+          <RequireModule module="reporting" label="Reporting">
+            <ReportingPage />
+          </RequireModule>
+        ),
+      },
+      { path: '/reports', element: <Navigate to="/summary" replace /> },
       { path: '/settings', element: <SettingsPage /> },
       { path: '/404', element: <NotFoundPage /> },
       { path: '*', element: <Navigate to="/404" replace /> },

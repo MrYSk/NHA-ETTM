@@ -5,8 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { checkHealth } from '@/api/health.service';
-import { testSsl } from '@/api/reports.service';
+import { checkHealth, testSsl } from '@/api/health.service';
+
 import { API_BASE_URL } from '@/api/client';
 import { queryKeys } from '@/lib/queryClient';
 import { useTheme } from '@/hooks/useTheme';

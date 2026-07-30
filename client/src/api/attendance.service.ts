@@ -1,5 +1,6 @@
 import { apiClient, createListCache, paginateList } from './client';
 import { getSessionUser } from './auth.service';
+import { scopeByEmployee } from '@/lib/access';
 import type { AttendanceRecord, AttendanceStatus, MonthlySummary, PaginatedResult } from '@/types';
 
 export interface AttendanceFilters {
@@ -65,7 +66,8 @@ const mobileAttendanceCache = createListCache(async () => {
 });
 
 function applyFilters(items: AttendanceRecord[], filters: AttendanceFilters): AttendanceRecord[] {
-  return items.filter(
+  // Only records for employees this user is responsible for.
+  return scopeByEmployee(items, (a) => a.employeeId).filter(
     (a) =>
       (!filters.employeeId || String(a.employeeId) === String(filters.employeeId)) &&
       (!filters.siteId || String(a.siteId) === String(filters.siteId)) &&
@@ -86,8 +88,93 @@ export async function listMobileAttendance(filters: AttendanceFilters): Promise<
 }
 
 export async function getAttendanceDetail(id: AttendanceRecord['id']): Promise<AttendanceRecord | undefined> {
-  const all = await attendanceCache.get();
-  return all.find((a) => String(a.id) === String(id)) ?? (await mobileAttendanceCache.get()).find((a) => String(a.id) === String(id));
+  const matches = (records: AttendanceRecord[]) =>
+    scopeByEmployee(records, (a) => a.employeeId).find((a) => String(a.id) === String(id));
+  return matches(await attendanceCache.get()) ?? matches(await mobileAttendanceCache.get());
+}
+
+/** One day of attendance: the network total plus a per-site breakdown. */
+export interface AttendanceDay {
+  date: string;
+  present: number;
+  /** Distinct employees present, keyed by site id. */
+  bySite: Record<string, number>;
+}
+
+export interface AttendanceStats {
+  /** The most recent date with check-ins (YYYY-MM-DD), if any. */
+  latestDate?: string;
+  /** Distinct employees present on `latestDate`, network-wide. */
+  presentCount: number;
+  /** Present on `latestDate`, keyed by site id. */
+  presentBySite: Record<string, number>;
+  /** Sites that appear anywhere in the attendance data, for the site filter. */
+  sites: { id: string; name: string }[];
+  /** The last `TREND_DAYS` days, oldest→newest. */
+  daily: AttendanceDay[];
+}
+
+const TREND_DAYS = 14;
+
+/*
+ * Attendance headline figures for the dashboard, derived from the same cached
+ * attendance list the Attendance page uses (the upstream offers no aggregate
+ * endpoint and ignores date filters, so this is computed client-side).
+ *
+ * Counts are of DISTINCT employees, not check-in rows: one person punching in
+ * several times in a day is still one person present.
+ */
+export async function getAttendanceStats(): Promise<AttendanceStats> {
+  const records = scopeByEmployee(await attendanceCache.get(), (a) => a.employeeId);
+
+  // date -> site id -> set of employee ids ("" bucket holds the day's total)
+  const byDate = new Map<string, Map<string, Set<string>>>();
+  const siteNames = new Map<string, string>();
+
+  for (const record of records) {
+    const date = record.date;
+    if (!date) continue;
+    const employee = String(record.employeeId ?? '');
+    const siteId = String(record.siteId ?? '');
+    if (siteId && record.siteName) siteNames.set(siteId, record.siteName);
+
+    const sites = byDate.get(date) ?? new Map<string, Set<string>>();
+    for (const key of ['', siteId]) {
+      if (key === '' || key) {
+        const set = sites.get(key) ?? new Set<string>();
+        set.add(employee);
+        sites.set(key, set);
+      }
+    }
+    byDate.set(date, sites);
+  }
+
+  const countsFor = (date: string | undefined): Record<string, number> => {
+    const sites = date ? byDate.get(date) : undefined;
+    const out: Record<string, number> = {};
+    if (!sites) return out;
+    for (const [siteId, set] of sites) {
+      if (siteId) out[siteId] = set.size;
+    }
+    return out;
+  };
+
+  const dates = Array.from(byDate.keys()).sort();
+  const latestDate = dates[dates.length - 1];
+
+  return {
+    latestDate,
+    presentCount: latestDate ? (byDate.get(latestDate)?.get('')?.size ?? 0) : 0,
+    presentBySite: countsFor(latestDate),
+    sites: Array.from(siteNames, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    ),
+    daily: dates.slice(-TREND_DAYS).map((date) => ({
+      date,
+      present: byDate.get(date)?.get('')?.size ?? 0,
+      bySite: countsFor(date),
+    })),
+  };
 }
 
 interface SummaryRow {

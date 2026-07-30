@@ -4,13 +4,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import { approveLeave, deleteLeave, disapproveLeave, getLeaveDetail } from '@/api/leaves.service';
+import { approveLeave, deleteLeave, getLeaveDetail } from '@/api/leaves.service';
 import { queryKeys } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useAuth } from '@/hooks/useAuth';
 import { formatDate } from '@/utils/format';
 import type { Leave } from '@/types';
 
@@ -20,10 +20,11 @@ interface LeaveDetailDrawerProps {
 }
 
 export function LeaveDetailDrawer({ leaveId, onOpenChange }: LeaveDetailDrawerProps) {
-  const [rejectionReason, setRejectionReason] = React.useState('');
-  const [confirmAction, setConfirmAction] = React.useState<'approve' | 'disapprove' | 'delete' | null>(null);
+  const [confirmAction, setConfirmAction] = React.useState<'approve' | 'delete' | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canApprove, canDelete } = usePermissions();
+  const { user } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.leaveDetail(leaveId),
@@ -33,22 +34,20 @@ export function LeaveDetailDrawer({ leaveId, onOpenChange }: LeaveDetailDrawerPr
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['leaves'] });
 
+  /*
+   * Nobody may action their own request. The login payload's `user_id` is the
+   * signed-in person's biometric id, which is exactly what a leave row is keyed
+   * by (`bio_id`), so a match means this request belongs to the viewer.
+   */
+  const isOwnRequest = !!user?.id && String(data?.employeeId ?? '') === String(user.id);
+  const canActionThisRequest = canApprove && !isOwnRequest;
+
   const approveMutation = useMutation({
     mutationFn: () => approveLeave(leaveId!),
     onSuccess: () => {
       invalidate();
       toast({ title: 'Leave approved' });
       setConfirmAction(null);
-    },
-  });
-
-  const disapproveMutation = useMutation({
-    mutationFn: () => disapproveLeave(leaveId!, rejectionReason),
-    onSuccess: () => {
-      invalidate();
-      toast({ title: 'Leave disapproved' });
-      setConfirmAction(null);
-      setRejectionReason('');
     },
   });
 
@@ -68,7 +67,7 @@ export function LeaveDetailDrawer({ leaveId, onOpenChange }: LeaveDetailDrawerPr
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Leave request</SheetTitle>
-            <SheetDescription>Review, approve, or disapprove this request.</SheetDescription>
+            <SheetDescription>Review and approve this request.</SheetDescription>
           </SheetHeader>
 
           {isLoading && (
@@ -106,39 +105,38 @@ export function LeaveDetailDrawer({ leaveId, onOpenChange }: LeaveDetailDrawerPr
                 </div>
               )}
 
-              {data.status === 'pending' && (
+              {/* Approving requires the approval permission from the signed-in
+                  user's own login payload. Disapproving is intentionally not
+                  offered in the UI. */}
+              {data.status === 'pending' && canActionThisRequest && (
                 <div className="space-y-3">
                   <Separator />
-                  <div className="space-y-1.5">
-                    <Label htmlFor="rejectionReason">Rejection reason (if disapproving)</Label>
-                    <Textarea
-                      id="rejectionReason"
-                      rows={2}
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      placeholder="Explain why this request is being disapproved…"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button className="flex-1" onClick={() => setConfirmAction('approve')}>
-                      Approve
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1"
-                      disabled={!rejectionReason.trim()}
-                      onClick={() => setConfirmAction('disapprove')}
-                    >
-                      Disapprove
-                    </Button>
-                  </div>
+                  <Button className="w-full" onClick={() => setConfirmAction('approve')}>
+                    Approve
+                  </Button>
                 </div>
               )}
 
-              <Separator />
-              <Button variant="ghost" className="w-full text-destructive hover:text-destructive" onClick={() => setConfirmAction('delete')}>
-                Delete request
-              </Button>
+              {data.status === 'pending' && !canActionThisRequest && (
+                <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  {isOwnRequest
+                    ? 'This is your own request — it must be approved by someone else.'
+                    : 'You do not have permission to approve leave requests.'}
+                </p>
+              )}
+
+              {canDelete && (
+                <>
+                  <Separator />
+                  <Button
+                    variant="ghost"
+                    className="w-full text-destructive hover:text-destructive"
+                    onClick={() => setConfirmAction('delete')}
+                  >
+                    Delete request
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </SheetContent>
@@ -152,16 +150,6 @@ export function LeaveDetailDrawer({ leaveId, onOpenChange }: LeaveDetailDrawerPr
         confirmLabel={approveMutation.isPending ? 'Approving…' : 'Approve'}
         isLoading={approveMutation.isPending}
         onConfirm={() => approveMutation.mutate()}
-      />
-      <ConfirmDialog
-        open={confirmAction === 'disapprove'}
-        onOpenChange={(open) => !open && setConfirmAction(null)}
-        title="Disapprove this leave request?"
-        description="The employee will see the rejection reason you provided."
-        confirmLabel={disapproveMutation.isPending ? 'Disapproving…' : 'Disapprove'}
-        variant="destructive"
-        isLoading={disapproveMutation.isPending}
-        onConfirm={() => disapproveMutation.mutate()}
       />
       <ConfirmDialog
         open={confirmAction === 'delete'}

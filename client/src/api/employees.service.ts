@@ -1,4 +1,5 @@
 import { apiClient, createListCache, matchesSearch, paginateList } from './client';
+import { scopeByEmployee } from '@/lib/access';
 import type { Employee, PaginatedResult } from '@/types';
 
 export interface EmployeeFilters {
@@ -40,6 +41,8 @@ export interface EmployeeRow {
 export function mapEmployee(row: EmployeeRow): Employee {
   return {
     id: row.id,
+    // bio_ref_id is the biometric id the attendance/schedule/leave systems key on.
+    bioId: row.bio_ref_id,
     name: row.fullname,
     employeeCode: row.bio_ref_id,
     designation: row.designation_name,
@@ -65,7 +68,7 @@ const employeesCache = createListCache(async () => {
 });
 
 export async function listEmployees(filters: EmployeeFilters): Promise<PaginatedResult<Employee>> {
-  const all = await employeesCache.get();
+  const all = await listAllEmployees();
   const filtered = all.filter(
     (e) =>
       matchesSearch([e.name, e.employeeCode, e.email], filters.search) &&
@@ -76,12 +79,19 @@ export async function listEmployees(filters: EmployeeFilters): Promise<Paginated
   return paginateList(filtered, filters.page, filters.pageSize);
 }
 
+// Narrowed to the employees the signed-in user is responsible for.
 export async function listAllEmployees(): Promise<Employee[]> {
+  const all = await employeesCache.get();
+  return scopeByEmployee(all, (e) => e.bioId);
+}
+
+/** The full, unscoped roster — only for pickers that must offer everyone. */
+export async function listEveryEmployee(): Promise<Employee[]> {
   return employeesCache.get();
 }
 
 export async function getEmployee(id: Employee['id']): Promise<Employee | undefined> {
-  const all = await employeesCache.get();
+  const all = await listAllEmployees();
   return all.find((e) => String(e.id) === String(id));
 }
 

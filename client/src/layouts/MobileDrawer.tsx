@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { LogOut, Route } from 'lucide-react';
+import { LogOut } from 'lucide-react';
+import { Logo } from '@/components/common/Logo';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { NAV_ITEMS } from './nav-config';
+import { visibleNavItems } from './nav-config';
 import { useAuth } from '@/hooks/useAuth';
 
 interface MobileDrawerProps {
@@ -11,6 +12,8 @@ interface MobileDrawerProps {
 }
 
 export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
+  const { user } = useAuth();
+  const navItems = visibleNavItems(user?.modules);
   const { logout } = useAuth();
 
   return (
@@ -18,9 +21,7 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
       <SheetContent side="left" className="w-72 p-0">
         <SheetHeader className="border-b p-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Route className="h-4 w-4" />
-            </div>
+            <Logo className="h-9 w-9" />
             <div className="leading-tight">
               <SheetTitle>NHA ETTM</SheetTitle>
               <p className="text-[11px] text-muted-foreground">HRIS Dashboard</p>
@@ -29,7 +30,7 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
         </SheetHeader>
 
         <nav className="space-y-0.5 p-3">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

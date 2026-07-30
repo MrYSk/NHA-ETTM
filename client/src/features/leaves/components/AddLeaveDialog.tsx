@@ -21,8 +21,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { addLeave, checkLeaveEndDate, checkLeaveStartDate } from '@/api/leaves.service';
 import { listEmployees } from '@/api/employees.service';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 
-const LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave'];
+// Real HRIS leave types (id -> label). The controller stores the numeric id;
+// type 1 ("Short") is an hourly leave, 2/3 are full-day types.
+const LEAVE_TYPES = [
+  { id: '2', name: 'Casual' },
+  { id: '3', name: 'Sick' },
+  { id: '1', name: 'Short (hourly)' },
+];
 
 const schema = z
   .object({
@@ -44,6 +51,7 @@ export function AddLeaveDialog() {
   const [dateWarning, setDateWarning] = React.useState<string | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canWrite } = usePermissions();
 
   const employeesQuery = useQuery({
     queryKey: ['employees', 'dropdown'],
@@ -91,6 +99,10 @@ export function AddLeaveDialog() {
     },
   });
 
+  // Creating records requires the write permission from the signed-in
+  // user's login payload.
+  if (!canWrite) return null;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -118,7 +130,9 @@ export function AddLeaveDialog() {
                   </SelectTrigger>
                   <SelectContent>
                     {employeesQuery.data?.items.map((e) => (
-                      <SelectItem key={e.id} value={String(e.id)}>
+                      // The leave system identifies people by biometric id
+                      // (bioId), not the employees-table id.
+                      <SelectItem key={e.id} value={String(e.bioId ?? e.id)}>
                         {e.name}
                       </SelectItem>
                     ))}
@@ -141,8 +155,8 @@ export function AddLeaveDialog() {
                   </SelectTrigger>
                   <SelectContent>
                     {LEAVE_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -18,11 +18,18 @@ export interface User {
   // (required by e.g. the monthly_summary endpoint) and module permissions.
   employeeIds?: string[];
   siteIds?: string[];
+  /** Module names this user's role unlocks (e.g. "leaves", "roles"). */
+  modules?: string[];
   permissions?: Permission & { read?: boolean };
 }
 
 export interface Employee {
+  // Primary key in the employees table (user_list.id). Used to look an
+  // employee up in the employees list.
   id: ID;
+  // Biometric/device id (user_list.bio_ref_id). This is how the attendance,
+  // schedule and leave systems identify a person — NOT the `id` above.
+  bioId?: string;
   name?: string;
   employeeCode?: string;
   designation?: string;
@@ -42,6 +49,8 @@ export interface Site {
   name?: string;
   code?: string;
   location?: string;
+  /** Employees assigned to this site (the `status` column is not a reliable
+   * "currently employed" flag, so it is not used to filter this count). */
   employeeCount?: number;
   status?: 'active' | 'inactive';
 }
@@ -130,8 +139,18 @@ export interface Report {
   title?: string;
   type?: string;
   generatedOn?: string;
+  siteId?: ID;
   siteName?: string;
   dateRange?: string;
+  /** The underlying attendance detail this report row was built from. */
+  employeeName?: string;
+  employeeCode?: string;
+  designation?: string;
+  date?: string;
+  checkIn?: string;
+  checkOut?: string;
+  hoursWorked?: string;
+  acceptableTime?: string;
 }
 
 // One row per employee per schedule period, as returned by `monthly_summary`.

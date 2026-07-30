@@ -5,7 +5,9 @@
   "description": "National Highway Authority ETTM Department — Internal HRIS Dashboard",
   "scripts": {
     "install:all": "npm install --prefix client && npm install --prefix server",
+    "freeports": "(lsof -ti:5173 | xargs kill -9 2>/dev/null; lsof -ti:5000 | xargs kill -9 2>/dev/null) || true",
     "dev": "concurrently -k --kill-signal SIGTERM -n CLIENT,SERVER -c blue,green \"npm run dev --prefix client\" \"npm run dev --prefix server\"",
+    "demo": "npm run freeports && npm run dev",
     "build": "npm run build --prefix client && npm run build --prefix server",
     "start": "npm run start --prefix server",
     "typecheck": "npm run typecheck --prefix client && npm run typecheck --prefix server",

@@ -1,6 +1,5 @@
-import { Menu, Moon, Search, Sun } from 'lucide-react';
+import { Menu, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Breadcrumbs } from './Breadcrumbs';
 import { ApiStatusBadge } from './ApiStatusBadge';
 import { UserMenu } from './UserMenu';
@@ -21,11 +20,10 @@ export function Topbar({ onOpenDrawer }: TopbarProps) {
 
       <Breadcrumbs />
 
+      {/* No global search here: each page has its own search box that actually
+          filters that page's data, and a second, non-functioning one in the
+          top bar was only confusing. */}
       <div className="ml-auto flex items-center gap-2">
-        <div className="relative hidden lg:block">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search employees, sites, leaves…" className="w-64 pl-8" />
-        </div>
         <ApiStatusBadge />
         <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

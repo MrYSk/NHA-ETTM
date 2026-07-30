@@ -4,9 +4,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
+  Eye,
+  EyeOff,
   Loader2,
   Lock,
-  Route as RouteIcon,
   User,
 } from 'lucide-react';
 
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/card';
 
 import { useAuth } from '@/hooks/useAuth';
+import { Logo } from '@/components/common/Logo';
 
 const schema = z.object({
   username: z
@@ -44,6 +46,9 @@ export default function LoginPage() {
 
   const [serverError, setServerError] =
     React.useState<string | null>(null);
+
+  const [showPassword, setShowPassword] =
+    React.useState(false);
 
   const {
     register,
@@ -107,9 +112,7 @@ export default function LoginPage() {
   return (
     <Card className="w-full max-w-sm border-0 shadow-none sm:border sm:shadow-card">
       <CardHeader className="space-y-1">
-        <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground lg:hidden">
-          <RouteIcon className="h-5 w-5" />
-        </div>
+        <Logo className="mb-3 h-14 w-14" />
 
         <CardTitle className="text-lg">
           Sign in to HRIS
@@ -162,13 +165,27 @@ export default function LoginPage() {
 
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 placeholder="Enter your password"
-                className="pl-8"
+                className="pl-8 pr-9"
                 disabled={isSubmitting}
                 {...register('password')}
               />
+
+              {/* Reveal toggle. `tabIndex={-1}` keeps Tab going straight from
+                  the password field to Sign in. */}
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPassword((visible) => !visible)}
+                disabled={isSubmitting}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
 
             {errors.password && (

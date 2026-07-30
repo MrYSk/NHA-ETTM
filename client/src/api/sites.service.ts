@@ -1,5 +1,6 @@
 import { apiClient, createListCache, matchesSearch } from './client';
 import { listAllEmployees, mapEmployee, type EmployeeRow } from './employees.service';
+import { scopeBySite } from '@/lib/access';
 import type { Designation, Employee, Role, Site } from '@/types';
 
 interface DesignationRow {
@@ -16,16 +17,27 @@ const sitesCache = createListCache(async () => {
   return data.sites_info ?? [];
 });
 
+/*
+ * Sites with real headcounts derived from the employee list.
+ *
+ * Every employee assigned to the site is counted. The `status` column is NOT
+ * used to filter: it does not mean "currently employed" — a third of the people
+ * checking in daily have status 0 — so filtering on it badly under-reports
+ * staffing. (A separate ~31 records, mostly vendors such as "IK Enterprises",
+ * have no site at all and therefore belong to no site's count.)
+ */
 export async function listSites(search?: string): Promise<Site[]> {
   const [sites, employees] = await Promise.all([sitesCache.get(), listAllEmployees()]);
 
   const countBySite = new Map<string, number>();
   for (const employee of employees) {
+    if (!employee.siteId) continue;
     const key = String(employee.siteId);
     countBySite.set(key, (countBySite.get(key) ?? 0) + 1);
   }
 
-  return sites
+  // Only the sites this user is responsible for.
+  return scopeBySite(sites, (s) => s.id)
     .filter((s) => matchesSearch([s.name], search))
     .map((s) => ({ ...s, employeeCount: countBySite.get(String(s.id)) ?? 0 }));
 }

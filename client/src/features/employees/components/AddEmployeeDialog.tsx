@@ -22,6 +22,7 @@ import { listSites } from '@/api/sites.service';
 import { listDesignations } from '@/api/sites.service';
 import { queryKeys } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Plus } from 'lucide-react';
 
 const schema = z.object({
@@ -39,6 +40,7 @@ export function AddEmployeeDialog() {
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canWrite } = usePermissions();
 
   const sitesQuery = useQuery({ queryKey: queryKeys.sites(), queryFn: () => listSites(), enabled: open });
   const designationsQuery = useQuery({
@@ -67,6 +69,10 @@ export function AddEmployeeDialog() {
       toast({ variant: 'destructive', title: 'Could not add employee', description: err?.message });
     },
   });
+
+  // Creating records requires the write permission from the signed-in
+  // user's login payload.
+  if (!canWrite) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

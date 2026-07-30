@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -8,6 +9,8 @@ interface StatCardProps {
   icon: LucideIcon;
   trend?: string;
   trendTone?: 'success' | 'warning' | 'destructive' | 'neutral';
+  /** Optional control (e.g. a filter) rendered under the value. */
+  footer?: React.ReactNode;
 }
 
 const TONE_CLASS: Record<NonNullable<StatCardProps['trendTone']>, string> = {
@@ -17,18 +20,28 @@ const TONE_CLASS: Record<NonNullable<StatCardProps['trendTone']>, string> = {
   neutral: 'text-muted-foreground',
 };
 
-export function StatCard({ label, value, icon: Icon, trend, trendTone = 'neutral' }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  icon: Icon,
+  trend,
+  trendTone = 'neutral',
+  footer,
+}: StatCardProps) {
   return (
     <Card>
-      <CardContent className="flex items-start justify-between p-5">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="mt-1.5 text-2xl font-semibold tabular-nums">{value}</p>
-          {trend && <p className={cn('mt-1 text-xs font-medium', TONE_CLASS[trendTone])}>{trend}</p>}
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="mt-1.5 text-2xl font-semibold tabular-nums">{value}</p>
+            {trend && <p className={cn('mt-1 text-xs font-medium', TONE_CLASS[trendTone])}>{trend}</p>}
+          </div>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
+            <Icon className="h-4.5 w-4.5" />
+          </div>
         </div>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
-          <Icon className="h-4.5 w-4.5" />
-        </div>
+        {footer && <div className="mt-3">{footer}</div>}
       </CardContent>
     </Card>
   );

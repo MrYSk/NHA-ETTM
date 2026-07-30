@@ -88,6 +88,10 @@ export function matchesSearch(haystack: (string | undefined)[], search?: string)
 interface ErrorResponseData {
   message?: string;
   error?: string;
+  // Some CodeIgniter controllers report the human-readable reason as `msg`
+  // (e.g. AddSchedule's duplicate-schedule 409), with extra lines in `details`.
+  msg?: string;
+  details?: string[];
   errors?: Record<string, string[]>;
 }
 
@@ -121,7 +125,11 @@ export function normalizeError(
   const data = err.response.data;
 
   const backendMessage =
-    data?.message || data?.error;
+    data?.message ||
+    data?.error ||
+    // `msg` + optional `details` lines (e.g. AddSchedule duplicate 409).
+    [data?.msg, ...(data?.details ?? [])].filter(Boolean).join(' ') ||
+    undefined;
 
   switch (status) {
     case 400:

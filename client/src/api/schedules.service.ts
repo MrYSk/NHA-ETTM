@@ -1,4 +1,5 @@
 import { apiClient, createListCache, matchesSearch, paginateList } from './client';
+import { scopeByEmployee } from '@/lib/access';
 import type { PaginatedResult, Schedule } from '@/types';
 
 export interface ScheduleFilters {
@@ -51,7 +52,7 @@ const schedulesCache = createListCache(async () => {
 });
 
 export async function listSchedules(filters: ScheduleFilters): Promise<PaginatedResult<Schedule>> {
-  const all = await schedulesCache.get();
+  const all = scopeByEmployee(await schedulesCache.get(), (s) => s.employeeId);
   const filtered = all.filter(
     (s) =>
       matchesSearch([s.employeeName, s.siteName, s.shiftName], filters.search) &&
@@ -61,7 +62,7 @@ export async function listSchedules(filters: ScheduleFilters): Promise<Paginated
 }
 
 export async function getScheduleDetail(id: Schedule['id']): Promise<Schedule | undefined> {
-  const all = await schedulesCache.get();
+  const all = scopeByEmployee(await schedulesCache.get(), (s) => s.employeeId);
   return all.find((s) => String(s.id) === String(id));
 }
 
@@ -73,11 +74,35 @@ export interface AddSchedulePayload {
   endDate: string;
 }
 
-// TODO: the exact payload field names of `add_schedule` and
-// `start_schedule_blocked_dates` are not yet confirmed with the backend
-// controllers — verify before relying on them in production.
-export async function addSchedule(payload: AddSchedulePayload): Promise<Schedule> {
-  const { data } = await apiClient.post<Schedule>('/add_schedule', payload);
+export interface AddScheduleResult {
+  msg?: string;
+  status?: string;
+}
+
+// The <input type="date"> value is "YYYY-MM-DD", but the AddSchedule controller
+// parses dates as "MM/DD/YYYY" (Api/AddSchedule/index.php).
+function toControllerDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-');
+  return `${month}/${day}/${year}`;
+}
+
+// Payload shaped to match the CodeIgniter Api/AddSchedule controller exactly:
+// - from_date/to_date in MM/DD/YYYY
+// - selected_users: an array of biometric ids (the controller inserts bio_id)
+// - shift_id, plus public-holiday count/reason (no public holidays by default)
+// The controller ignores `site`, so it is not sent.
+export async function addSchedule(payload: AddSchedulePayload): Promise<AddScheduleResult> {
+  const bioId = String(payload.employeeId);
+  const body = {
+    from_date: toControllerDate(String(payload.startDate)),
+    to_date: toControllerDate(String(payload.endDate)),
+    selected_users: [bioId],
+    user_id: bioId,
+    shift_id: String(payload.shiftId),
+    p_h_c: 0,
+    p_h_r: '',
+  };
+  const { data } = await apiClient.post<AddScheduleResult>('/add_schedule', body);
   schedulesCache.clear();
   return data;
 }

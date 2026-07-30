@@ -37,6 +37,28 @@ export function parseDurationHours(value?: string | null): number {
   return Number.isFinite(hours) ? hours : 0;
 }
 
+/** Parse an "HH:MM:SS" duration into whole seconds. */
+export function parseDurationSeconds(value?: string | null): number {
+  if (!value) return 0;
+  const [h = '0', m = '0', s = '0'] = value.split(':');
+  const total = Number(h) * 3600 + Number(m) * 60 + Number(s);
+  return Number.isFinite(total) ? total : 0;
+}
+
+/** Format seconds back to "HH:MM:SS", letting hours run past 24. */
+export function formatDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return [h, m, s].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+/** Sum a list of "HH:MM:SS" durations into a single "HH:MM:SS". */
+export function sumDurations(values: (string | undefined)[]): string {
+  return formatDuration(values.reduce((total, value) => total + parseDurationSeconds(value), 0));
+}
+
 export function titleCase(value?: string | null): string {
   if (!value) return '';
   return value

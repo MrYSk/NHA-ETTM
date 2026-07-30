@@ -22,6 +22,7 @@ import { listSites } from '@/api/sites.service';
 import { listEmployees } from '@/api/employees.service';
 import { listShifts } from '@/api/shifts.service';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { queryKeys } from '@/lib/queryClient';
 
 const schema = z
@@ -43,6 +44,7 @@ export function AddScheduleDialog() {
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canWrite } = usePermissions();
 
   const {
     register,
@@ -83,6 +85,10 @@ export function AddScheduleDialog() {
       toast({ variant: 'destructive', title: 'Could not create schedule', description: err?.message });
     },
   });
+
+  // Creating records requires the write permission from the signed-in
+  // user's login payload.
+  if (!canWrite) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -134,7 +140,9 @@ export function AddScheduleDialog() {
                   </SelectTrigger>
                   <SelectContent>
                     {employeesQuery.data?.items.map((e) => (
-                      <SelectItem key={e.id} value={String(e.id)}>
+                      // The schedule system identifies people by biometric id
+                      // (bioId), not the employees-table id.
+                      <SelectItem key={e.id} value={String(e.bioId ?? e.id)}>
                         {e.name}
                       </SelectItem>
                     ))}

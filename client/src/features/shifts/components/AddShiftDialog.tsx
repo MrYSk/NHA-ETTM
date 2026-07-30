@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { addShift } from '@/api/shifts.service';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const schema = z
   .object({
@@ -36,6 +37,7 @@ export function AddShiftDialog() {
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canWrite } = usePermissions();
 
   const {
     register,
@@ -56,6 +58,10 @@ export function AddShiftDialog() {
       toast({ variant: 'destructive', title: 'Could not add shift', description: err?.message });
     },
   });
+
+  // Creating records requires the write permission from the signed-in
+  // user's login payload.
+  if (!canWrite) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

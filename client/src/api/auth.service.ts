@@ -31,6 +31,13 @@ interface BackendLoginResponse {
   role?: string;
   employees?: string[];
   sites?: string[];
+  /*
+   * The modules this user's role unlocks, e.g.
+   * {"1":"schedules","2":"leaves","3":"attendance","4":"summary","5":"employees"}.
+   * A user without "roles" or "reporting" here must not see those sections.
+   */
+  tabNameToIndex?: Record<string, string>;
+  indexToTabName?: Record<string, number>;
   read_permission?: string;
   write_permission?: string;
   edit_permission?: string;
@@ -115,6 +122,12 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
 
   const jwt = decodeJwtPayload(token);
 
+  // Module names the role unlocks. Both shapes carry the same list, so take
+  // whichever the API returned.
+  const modules = Object.keys(data.indexToTabName ?? {}).length
+    ? Object.keys(data.indexToTabName ?? {})
+    : Object.values(data.tabNameToIndex ?? {});
+
   const user: User = {
     id: data.user_id ?? jwt?.user_id ?? 0,
     name: data.full_name ?? jwt?.full_name ?? username,
@@ -125,6 +138,7 @@ export async function login(payload: LoginPayload): Promise<LoginResult> {
     siteId: data.site ?? jwt?.site,
     employeeIds: data.employees,
     siteIds: data.sites,
+    modules: modules.map((m) => String(m).toLowerCase()),
     permissions: {
       read: data.read_permission === '1',
       write: data.write_permission === '1',

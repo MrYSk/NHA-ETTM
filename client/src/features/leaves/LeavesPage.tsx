@@ -58,10 +58,11 @@ export default function LeavesPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={status} onValueChange={setStatus}>
           <TabsList>
+            {/* Disapproving is not offered in this app, so there is no
+                Disapproved filter either. */}
             <TabsTrigger value={ALL}>All</TabsTrigger>
             <TabsTrigger value="pending">Pending</TabsTrigger>
             <TabsTrigger value="approved">Approved</TabsTrigger>
-            <TabsTrigger value="disapproved">Disapproved</TabsTrigger>
           </TabsList>
         </Tabs>
         <SearchInput value={search} onChange={setSearch} placeholder="Search by employee or leave type…" className="sm:w-72" />

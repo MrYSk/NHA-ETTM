@@ -1,38 +1,64 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Users, CalendarCheck, CalendarClock, Building2 } from 'lucide-react';
+import { Users, UserCheck, CalendarClock, Building2 } from 'lucide-react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { WidgetErrorBoundary } from '@/components/common/WidgetErrorBoundary';
 import { StatCard } from './components/StatCard';
 import { listEmployees } from '@/api/employees.service';
 import { listSites } from '@/api/sites.service';
-import { getMonthlySummary } from '@/api/attendance.service';
+import { getAttendanceStats } from '@/api/attendance.service';
 import { listLeaves } from '@/api/leaves.service';
 import { queryKeys } from '@/lib/queryClient';
-import { formatDate, parseDurationHours } from '@/utils/format';
+import { formatDate } from '@/utils/format';
 
 const AttendanceTrendChart = React.lazy(() => import('./components/AttendanceTrendChart'));
 const SiteStaffingChart = React.lazy(() => import('./components/SiteStaffingChart'));
 
+const ALL_SITES = '__all__';
+
 export default function DashboardPage() {
+  const [siteFilter, setSiteFilter] = React.useState(ALL_SITES);
+
   const employeesQuery = useQuery({
     queryKey: queryKeys.employees({ page: 1, pageSize: 1 }),
     queryFn: () => listEmployees({ page: 1, pageSize: 1 }),
   });
   const sitesQuery = useQuery({ queryKey: queryKeys.sites(), queryFn: () => listSites() });
-  const summaryQuery = useQuery({ queryKey: queryKeys.monthlySummary(), queryFn: getMonthlySummary });
+  const attendanceStatsQuery = useQuery({
+    queryKey: queryKeys.attendanceStats(),
+    queryFn: getAttendanceStats,
+  });
   const pendingLeavesQuery = useQuery({
     queryKey: queryKeys.leaves({ status: 'pending', page: 1, pageSize: 5 }),
     queryFn: () => listLeaves({ status: 'pending', page: 1, pageSize: 5 }),
   });
 
-  const summaryRows = summaryQuery.data ?? [];
-  const totalTeamHours = Math.round(
-    summaryRows.reduce((sum, row) => sum + parseDurationHours(row.totalTime), 0),
+  const sites = sitesQuery.data ?? [];
+  const stats = attendanceStatsQuery.data;
+  const allSitesSelected = siteFilter === ALL_SITES;
+
+  // Present count and trend series both follow the selected site.
+  const presentCount = allSitesSelected
+    ? stats?.presentCount ?? 0
+    : stats?.presentBySite[siteFilter] ?? 0;
+
+  const dailySeries = React.useMemo(
+    () =>
+      (stats?.daily ?? []).map((day) => ({
+        date: day.date,
+        present: allSitesSelected ? day.present : day.bySite[siteFilter] ?? 0,
+      })),
+    [stats, siteFilter, allSitesSelected],
   );
+
+  const selectedSiteName = stats?.sites.find((s) => s.id === siteFilter)?.name;
+  const presentTrend = stats?.latestDate
+    ? `${allSitesSelected ? 'All sites' : selectedSiteName ?? 'Site'} · ${formatDate(stats.latestDate)}`
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -46,14 +72,29 @@ export default function DashboardPage() {
           label="Total employees"
           value={employeesQuery.isLoading ? '—' : employeesQuery.data?.total ?? 0}
           icon={Users}
-          trend={sitesQuery.data ? `Across ${sitesQuery.data.length} sites` : undefined}
+          trend={sites.length ? `Across ${sites.length} sites` : undefined}
         />
         <StatCard
-          label="Team hours logged"
-          value={summaryQuery.isLoading ? '—' : `${totalTeamHours.toLocaleString()} h`}
-          icon={CalendarCheck}
-          trend={summaryRows.length ? `${summaryRows.length} summary periods` : undefined}
+          label="Present employees"
+          value={attendanceStatsQuery.isLoading ? '—' : presentCount}
+          icon={UserCheck}
+          trend={presentTrend}
           trendTone="success"
+          footer={
+            <Select value={siteFilter} onValueChange={setSiteFilter}>
+              <SelectTrigger className="h-8 text-xs" aria-label="Filter present employees by site">
+                <SelectValue placeholder="All sites" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_SITES}>All sites</SelectItem>
+                {stats?.sites.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} ({stats.presentBySite[s.id] ?? 0})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
         />
         <StatCard
           label="Pending leave requests"
@@ -64,7 +105,7 @@ export default function DashboardPage() {
         />
         <StatCard
           label="Sites"
-          value={sitesQuery.isLoading ? '—' : sitesQuery.data?.length ?? 0}
+          value={sitesQuery.isLoading ? '—' : sites.length}
           icon={Building2}
           trend="ETTM network"
         />
@@ -73,16 +114,19 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Team hours</CardTitle>
-            <CardDescription>Total logged hours per employee, from the monthly summary.</CardDescription>
+            <CardTitle>Daily attendance</CardTitle>
+            <CardDescription>
+              Employees who checked in over the last 14 recorded days
+              {allSitesSelected ? ' across all sites' : ` at ${selectedSiteName ?? 'the selected site'}`}.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <WidgetErrorBoundary label="attendance-trend-chart">
-              {summaryQuery.isLoading ? (
+              {attendanceStatsQuery.isLoading ? (
                 <Skeleton className="h-[260px] w-full" />
               ) : (
                 <React.Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
-                  <AttendanceTrendChart data={summaryQuery.data ?? []} />
+                  <AttendanceTrendChart data={dailySeries} />
                 </React.Suspense>
               )}
             </WidgetErrorBoundary>
@@ -92,7 +136,7 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Staffing by site</CardTitle>
-            <CardDescription>Employee headcount, top sites.</CardDescription>
+            <CardDescription>Employees assigned to each of the {sites.length || 16} sites.</CardDescription>
           </CardHeader>
           <CardContent>
             <WidgetErrorBoundary label="site-staffing-chart">
@@ -100,7 +144,7 @@ export default function DashboardPage() {
                 <Skeleton className="h-[260px] w-full" />
               ) : (
                 <React.Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
-                  <SiteStaffingChart data={sitesQuery.data ?? []} />
+                  <SiteStaffingChart data={sites} />
                 </React.Suspense>
               )}
             </WidgetErrorBoundary>

@@ -14,6 +14,7 @@ import {
   togglePermission,
 } from '@/api/roles.service';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import type { Permission, Role } from '@/types';
 
 const PERMISSION_LABELS: { key: keyof Permission; label: string }[] = [
@@ -26,6 +27,8 @@ const PERMISSION_LABELS: { key: keyof Permission; label: string }[] = [
 export function RoleCard({ role }: { role: Role }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  // Changing a role's permissions is an edit; unassigning is a delete.
+  const { canEdit, canDelete } = usePermissions();
   const [pendingRemoval, setPendingRemoval] = React.useState<
     { type: 'employee' | 'module' | 'site'; id: string | number; label?: string } | null
   >(null);
@@ -69,6 +72,7 @@ export function RoleCard({ role }: { role: Role }) {
                   {label}
                   <Switch
                     checked={!!role.permissions?.[key]}
+                    disabled={!canEdit}
                     onCheckedChange={(value) => toggleMutation.mutate({ permission: key, value })}
                   />
                 </label>
@@ -81,16 +85,19 @@ export function RoleCard({ role }: { role: Role }) {
           <AssignmentList
             title="Employees"
             items={role.employees?.map((e) => ({ id: e.id, label: e.name ?? '' })) ?? []}
+            canRemove={canDelete}
             onRemove={(id, label) => setPendingRemoval({ type: 'employee', id, label })}
           />
           <AssignmentList
             title="Modules"
             items={role.modules?.map((m) => ({ id: m.id, label: m.name ?? '' })) ?? []}
+            canRemove={canDelete}
             onRemove={(id, label) => setPendingRemoval({ type: 'module', id, label })}
           />
           <AssignmentList
             title="Sites"
             items={role.sites?.map((s) => ({ id: s.id, label: s.name ?? '' })) ?? []}
+            canRemove={canDelete}
             onRemove={(id, label) => setPendingRemoval({ type: 'site', id, label })}
           />
         </CardContent>
@@ -113,10 +120,12 @@ export function RoleCard({ role }: { role: Role }) {
 function AssignmentList({
   title,
   items,
+  canRemove,
   onRemove,
 }: {
   title: string;
   items: { id: string | number; label: string }[];
+  canRemove: boolean;
   onRemove: (id: string | number, label: string) => void;
 }) {
   return (
@@ -127,16 +136,18 @@ function AssignmentList({
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {items.map((item) => (
-            <Badge key={item.id} variant="secondary" className="gap-1 pr-1">
+            <Badge key={item.id} variant="secondary" className={canRemove ? 'gap-1 pr-1' : undefined}>
               {item.label}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-4 w-4 rounded-full p-0 hover:bg-transparent"
-                onClick={() => onRemove(item.id, item.label)}
-              >
-                <X className="h-3 w-3" />
-              </Button>
+              {canRemove && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-4 w-4 rounded-full p-0 hover:bg-transparent"
+                  onClick={() => onRemove(item.id, item.label)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
             </Badge>
           ))}
         </div>
