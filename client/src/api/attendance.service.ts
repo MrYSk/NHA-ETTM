@@ -1,4 +1,4 @@
-import { apiClient, createListCache, paginateList } from './client';
+import { apiClient, createListCache, matchesSearch, paginateList } from './client';
 import { getSessionUser } from './auth.service';
 import { scopeByEmployee } from '@/lib/access';
 import type { AttendanceRecord, AttendanceStatus, MonthlySummary, PaginatedResult } from '@/types';
@@ -6,6 +6,8 @@ import type { AttendanceRecord, AttendanceStatus, MonthlySummary, PaginatedResul
 export interface AttendanceFilters {
   page?: number;
   pageSize?: number;
+  /** Free-text match on employee name, biometric id, or site. */
+  search?: string;
   employeeId?: string | number;
   siteId?: string | number;
   status?: AttendanceStatus;
@@ -73,8 +75,21 @@ function applyFilters(items: AttendanceRecord[], filters: AttendanceFilters): At
       (!filters.siteId || String(a.siteId) === String(filters.siteId)) &&
       (!filters.status || a.status === filters.status) &&
       (!filters.dateFrom || (a.date ?? '') >= filters.dateFrom) &&
-      (!filters.dateTo || (a.date ?? '') <= filters.dateTo),
+      (!filters.dateTo || (a.date ?? '') <= filters.dateTo) &&
+      matchesSearch([a.employeeName, String(a.employeeId ?? ''), a.siteName], filters.search),
   );
+}
+
+/*
+ * Every record matching the filters, ignoring pagination — used by the export
+ * so a download covers the whole filtered set, not just the visible page.
+ */
+export async function listAllAttendance(
+  filters: AttendanceFilters,
+  source: 'terminal' | 'mobile' = 'terminal',
+): Promise<AttendanceRecord[]> {
+  const cache = source === 'mobile' ? mobileAttendanceCache : attendanceCache;
+  return applyFilters(await cache.get(), filters);
 }
 
 export async function listAttendance(filters: AttendanceFilters): Promise<PaginatedResult<AttendanceRecord>> {

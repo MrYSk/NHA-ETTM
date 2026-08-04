@@ -21,9 +21,8 @@ import {
 import { useDebounce } from '@/hooks/useDebounce';
 import { queryKeys } from '@/lib/queryClient';
 import { downloadCsv, toCsvRows } from '@/utils/csv';
-import { formatDate, sumDurations } from '@/utils/format';
-
-const ALL_MONTHS = '__all__';
+import { sumDurations } from '@/utils/format';
+import { buildCalendar, DAYS_PER_ROW, padRow, toBands } from './calendar';
 
 /** "2026-07" -> "July 2026" */
 function monthLabel(month: string): string {
@@ -31,25 +30,6 @@ function monthLabel(month: string): string {
   const date = new Date(Number(year), Number(m) - 1, 1);
   return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
-
-/** Weekday name, so weekends stand out in a printed report. */
-function weekday(date: string): string {
-  const parsed = new Date(date);
-  return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('en-GB', { weekday: 'long' });
-}
-
-/** The per-day columns shown under each officer's heading. */
-const DAY_COLUMNS = [
-  { header: 'Date', value: (r: ReportingRecord) => formatDate(r.date), csv: (r: ReportingRecord) => r.date },
-  { header: 'Day', value: (r: ReportingRecord) => weekday(r.date) },
-  { header: 'Check in', value: (r: ReportingRecord) => r.checkIn, align: true },
-  { header: 'Check out', value: (r: ReportingRecord) => r.checkOut, align: true },
-  { header: 'Worked', value: (r: ReportingRecord) => r.workedTime, align: true },
-  { header: 'Overtime', value: (r: ReportingRecord) => r.extraTime, align: true },
-  { header: 'Late sitting', value: (r: ReportingRecord) => r.lateSitting, align: true },
-  { header: 'Early sitting', value: (r: ReportingRecord) => r.earlySitting, align: true },
-  { header: 'Acceptable', value: (r: ReportingRecord) => r.acceptableTime, align: true },
-] as const;
 
 interface OfficerGroup {
   bioId: string;
@@ -105,12 +85,12 @@ export default function ReportingPage() {
     if (month === null && monthsQuery.data?.length) setMonth(monthsQuery.data[0]);
   }, [month, monthsQuery.data]);
 
+  // The grid is a month view, so a month is always in effect.
+  const reportMonth = month ?? monthsQuery.data?.[0] ?? '';
+
   const filters = React.useMemo(
-    () => ({
-      employeeIds: selected,
-      month: !month || month === ALL_MONTHS ? undefined : month,
-    }),
-    [selected, month],
+    () => ({ employeeIds: selected, month: reportMonth || undefined }),
+    [selected, reportMonth],
   );
 
   const reportingQuery = useQuery({
@@ -129,7 +109,7 @@ export default function ReportingPage() {
 
   const records = React.useMemo(() => reportingQuery.data ?? [], [reportingQuery.data]);
   const groups = React.useMemo(() => groupByOfficer(records), [records]);
-  const periodLabel = !month || month === ALL_MONTHS ? 'All dates' : monthLabel(month);
+  const periodLabel = reportMonth ? monthLabel(reportMonth) : '—';
 
   /*
    * On screen the most recently picked officer comes first, so a new selection
@@ -154,46 +134,30 @@ export default function ReportingPage() {
   }
 
   /*
-   * Export as a sectioned report: one heading per officer, their days beneath
-   * it, then a totals line — so a name never repeats down a column.
+   * Export the calendar grid: for each officer, a name row, then the month laid
+   * out in bands of ten days — a day-label row followed by a times row, with
+   * blanks where they did not attend. This matches the sheet HR already uses.
    */
   function handleExport() {
-    const rows: unknown[][] = [
-      ['NHA ETTM — Attendance Report'],
-      ['Period', periodLabel],
-      ['Generated', new Date().toLocaleDateString('en-GB')],
-      [],
-    ];
+    const rows: unknown[][] = [];
 
     for (const group of exportGroups) {
-      rows.push([group.name]);
-      rows.push(['Bio ID', group.bioId, 'Designation', group.designation, 'Site', group.siteName]);
-      rows.push(DAY_COLUMNS.map((c) => c.header));
-      for (const day of group.days) {
-        rows.push(
-          DAY_COLUMNS.map((c) => ('csv' in c && c.csv ? c.csv(day) : c.value(day))),
-        );
+      // Name sits in column 5 with the site beside it, as in the HR sheet.
+      rows.push(['', '', '', '', group.name, `(${group.siteName})`, '', '', '', '']);
+
+      for (const band of toBands(buildCalendar(reportMonth, group.days))) {
+        rows.push(padRow(band.map((cell) => cell.label)));
+        rows.push(padRow(band.map((cell) => cell.times)));
       }
-      rows.push([
-        'Total',
-        `${group.days.length} day${group.days.length === 1 ? '' : 's'}`,
-        '',
-        '',
-        group.totals.worked,
-        group.totals.overtime,
-        group.totals.late,
-        group.totals.early,
-        group.totals.acceptable,
-      ]);
-      rows.push([]);
+
+      rows.push(padRow([]));
     }
 
     const who =
       exportGroups.length === 1
         ? exportGroups[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
         : `${exportGroups.length}-officers`;
-    const when = !month || month === ALL_MONTHS ? 'all-dates' : month;
-    downloadCsv(`nha-ettm-report-${who}-${when}.csv`, toCsvRows(rows));
+    downloadCsv(`nha-ettm-report-${who}-${reportMonth}.csv`, toCsvRows(rows));
   }
 
   return (
@@ -268,12 +232,11 @@ export default function ReportingPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Month</Label>
-                <Select value={month ?? ALL_MONTHS} onValueChange={setMonth}>
+                <Select value={reportMonth} onValueChange={setMonth}>
                   <SelectTrigger aria-label="Select report month">
-                    <SelectValue placeholder="All dates" />
+                    <SelectValue placeholder="Select a month" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={ALL_MONTHS}>All dates</SelectItem>
                     {monthsQuery.data?.map((m) => (
                       <SelectItem key={m} value={m}>
                         {monthLabel(m)}
@@ -371,54 +334,47 @@ export default function ReportingPage() {
             </p>
           </div>
 
+          {/* Calendar grid: every day of the month in bands of ten, matching
+              the downloaded sheet exactly. */}
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-muted/20">
-                  {DAY_COLUMNS.map((col) => (
-                    <th
-                      key={col.header}
-                      scope="col"
-                      className={`whitespace-nowrap border-b px-4 py-2 text-xs font-semibold text-muted-foreground ${
-                        'align' in col && col.align ? 'text-right' : 'text-left'
-                      }`}
-                    >
-                      {col.header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
+            <table className="w-full border-collapse text-xs">
               <tbody>
-                {group.days.map((day, index) => (
-                  <tr key={day.date} className={index % 2 ? 'bg-muted/10' : undefined}>
-                    {DAY_COLUMNS.map((col) => {
-                      const value = String(col.value(day) ?? '');
-                      return (
-                        <td
-                          key={col.header}
-                          className={`whitespace-nowrap border-b border-border/50 px-4 py-2 ${
-                            'align' in col && col.align ? 'text-right tabular-nums' : ''
+                {toBands(buildCalendar(reportMonth, group.days)).map((band) => (
+                  <React.Fragment key={band[0].day}>
+                    <tr className="bg-muted/30">
+                      {band.map((cell) => (
+                        <th
+                          key={cell.day}
+                          scope="col"
+                          className={`w-[10%] whitespace-nowrap border border-border/60 px-2 py-1.5 text-left font-semibold ${
+                            cell.isWeekend ? 'text-muted-foreground' : ''
                           }`}
                         >
-                          {value || <span className="text-muted-foreground">—</span>}
+                          {cell.label}
+                        </th>
+                      ))}
+                      {/* Keep the final band a full ten columns wide. */}
+                      {Array.from({ length: DAYS_PER_ROW - band.length }).map((_, i) => (
+                        <th key={`pad-h-${i}`} className="w-[10%] border border-border/60" />
+                      ))}
+                    </tr>
+                    <tr>
+                      {band.map((cell) => (
+                        <td
+                          key={cell.day}
+                          className={`whitespace-nowrap border border-border/60 px-2 py-1.5 tabular-nums ${
+                            cell.times ? '' : 'bg-muted/20'
+                          }`}
+                        >
+                          {cell.times || <span className="text-muted-foreground/50">—</span>}
                         </td>
-                      );
-                    })}
-                  </tr>
+                      ))}
+                      {Array.from({ length: DAYS_PER_ROW - band.length }).map((_, i) => (
+                        <td key={`pad-d-${i}`} className="border border-border/60 bg-muted/20" />
+                      ))}
+                    </tr>
+                  </React.Fragment>
                 ))}
-                <tr className="bg-muted/40 font-medium">
-                  <td className="px-4 py-2">Total</td>
-                  <td className="px-4 py-2 text-muted-foreground">
-                    {group.days.length} day{group.days.length === 1 ? '' : 's'}
-                  </td>
-                  <td />
-                  <td />
-                  <td className="px-4 py-2 text-right tabular-nums">{group.totals.worked}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{group.totals.overtime}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{group.totals.late}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{group.totals.early}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{group.totals.acceptable}</td>
-                </tr>
               </tbody>
             </table>
           </div>

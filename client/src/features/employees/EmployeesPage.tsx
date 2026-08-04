@@ -25,7 +25,6 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { queryKeys } from '@/lib/queryClient';
 import { usePermissions } from '@/hooks/usePermissions';
 import { initials } from '@/utils/format';
-import { AddEmployeeDialog } from './components/AddEmployeeDialog';
 import { EmployeeDetailDrawer } from './components/EmployeeDetailDrawer';
 import type { Employee } from '@/types';
 
@@ -73,7 +72,6 @@ export default function EmployeesPage() {
             ? 'The employees you are responsible for.'
             : 'Search and manage employee records across every ETTM site.'
         }
-        actions={<AddEmployeeDialog />}
       />
 
       <Card>
@@ -128,7 +126,7 @@ export default function EmployeesPage() {
         <EmptyState
           icon={Users}
           title="No employees found"
-          description="Try adjusting your search or filters, or add a new employee record."
+          description="Try adjusting your search or filters."
         />
       )}
 

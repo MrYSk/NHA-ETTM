@@ -59,8 +59,11 @@ export function AttendanceTable({ query, page, pageSize, onPageChange, onSelectR
             </TableRow>
           </TableHeader>
           <TableBody>
-            {records.map((record) => (
-              <TableRow key={record.id} className="cursor-pointer" onClick={() => onSelectRecord(record.id)}>
+            {/* The upstream repeats `id` across rows, so a stable composite
+                key is used — duplicate React keys break reconciliation and leave
+                stale rows on screen. */}
+            {records.map((record, index) => (
+              <TableRow key={`${record.employeeId}-${record.date}-${index}`} className="cursor-pointer" onClick={() => onSelectRecord(record.id)}>
                 <TableCell className="text-sm font-medium">{record.employeeName}</TableCell>
                 <TableCell className="text-sm">{record.siteName}</TableCell>
                 <TableCell className="text-sm">{formatDate(record.date)}</TableCell>
@@ -77,8 +80,8 @@ export function AttendanceTable({ query, page, pageSize, onPageChange, onSelectR
       </div>
 
       <div className="divide-y md:hidden">
-        {records.map((record) => (
-          <button key={record.id} onClick={() => onSelectRecord(record.id)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
+        {records.map((record, index) => (
+          <button key={`${record.employeeId}-${record.date}-${index}`} onClick={() => onSelectRecord(record.id)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{record.employeeName}</p>
               <p className="truncate text-xs text-muted-foreground">

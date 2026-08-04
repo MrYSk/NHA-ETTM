@@ -7,11 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { StatCard } from '@/features/dashboard/components/StatCard';
-import { listAttendance, listMobileAttendance } from '@/api/attendance.service';
+import { listAllAttendance, listAttendance, listMobileAttendance } from '@/api/attendance.service';
 import { listSites } from '@/api/sites.service';
 import { queryKeys } from '@/lib/queryClient';
+import { SearchInput } from '@/components/common/SearchInput';
+import { useDebounce } from '@/hooks/useDebounce';
+import { downloadCsv, toCsv } from '@/utils/csv';
+import { useToast } from '@/hooks/use-toast';
 import { AttendanceTable } from './components/AttendanceTable';
 import { AttendanceDetailDrawer } from './components/AttendanceDetailDrawer';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
@@ -28,12 +31,17 @@ export default function AttendancePage() {
   const [dateTo, setDateTo] = React.useState('');
   const [page, setPage] = React.useState(1);
   const [selectedId, setSelectedId] = React.useState<AttendanceRecord['id'] | null>(null);
+  const [search, setSearch] = React.useState('');
+  const [isExporting, setIsExporting] = React.useState(false);
+  const debouncedSearch = useDebounce(search);
+  const { toast } = useToast();
 
-  React.useEffect(() => setPage(1), [tab, siteId, status, dateFrom, dateTo]);
+  React.useEffect(() => setPage(1), [tab, siteId, status, dateFrom, dateTo, debouncedSearch]);
 
   const filters = {
     page,
     pageSize: PAGE_SIZE,
+    search: debouncedSearch,
     siteId: siteId === ALL ? undefined : siteId,
     status: status === ALL ? undefined : (status as AttendanceStatus),
     dateFrom: dateFrom || undefined,
@@ -66,21 +74,46 @@ export default function AttendancePage() {
     return { present, absent, late, leave };
   }, [activeQuery.data]);
 
+  /*
+   * Download every record matching the current filters (not just the page)
+   * for whichever tab is open, so terminal and mobile export separately.
+   */
+  async function handleExport() {
+    setIsExporting(true);
+    try {
+      const records = await listAllAttendance(filters, tab);
+      if (records.length === 0) {
+        toast({ title: 'Nothing to export', description: 'No records match the current filters.' });
+        return;
+      }
+      const csv = toCsv(records, [
+        { header: 'Date', value: (r) => r.date ?? '' },
+        { header: 'Employee', value: (r) => r.employeeName ?? '' },
+        { header: 'Bio ID', value: (r) => r.employeeId ?? '' },
+        { header: 'Site', value: (r) => r.siteName ?? '' },
+        { header: 'Check in', value: (r) => r.checkIn ?? '' },
+        { header: 'Check out', value: (r) => r.checkOut ?? '' },
+        { header: 'Source', value: (r) => r.source ?? '' },
+      ]);
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadCsv(`nha-ettm-attendance-${tab}-${stamp}.csv`, csv);
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not export attendance' });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Attendance"
         description="Terminal check-ins and mobile attendance across all ETTM sites."
         actions={
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" disabled className="gap-1.5">
-                <Download className="h-4 w-4" />
-                Export
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Export is coming soon</TooltipContent>
-          </Tooltip>
+          <Button size="sm" onClick={handleExport} disabled={isExporting} className="gap-1.5">
+            <Download className="h-4 w-4" />
+            {isExporting ? 'Preparing…' : 'Export CSV'}
+          </Button>
         }
       />
 
@@ -99,7 +132,19 @@ export default function AttendancePage() {
       </Tabs>
 
       <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+            <label className="text-xs font-medium text-muted-foreground" htmlFor="attendance-search">
+              Search
+            </label>
+            <SearchInput
+              id="attendance-search"
+              value={search}
+              onChange={setSearch}
+              placeholder="Employee or bio ID…"
+            />
+          </div>
+
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">From date</label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
