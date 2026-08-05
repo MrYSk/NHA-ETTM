@@ -7,25 +7,18 @@ export default defineConfig({
 
   resolve: {
     alias: {
-      '@': fileURLToPath(
-        new URL('./src', import.meta.url),
-      ),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
 
   server: {
-    port: 5173,
+    host: true,
+    port: 3000,
     strictPort: true,
 
     // Accept requests coming through a demo tunnel (Cloudflare Tunnel / ngrok),
     // otherwise Vite rejects the unfamiliar host with "Blocked request".
-    allowedHosts: [
-      'localhost',
-      '.trycloudflare.com',
-      '.ngrok-free.app',
-      '.ngrok.io',
-      '.loca.lt',
-    ],
+    allowedHosts: ['localhost', 'ettm.nha.gov.pk', '.ngrok-free.app', '.ngrok.io', '.loca.lt'],
 
     proxy: {
       '/api': {
